@@ -152,6 +152,7 @@ public class SimpleLoadManagerImpl implements LoadManager, ZooKeeperCacheListene
 
     public static final String LOADBALANCER_STRATEGY_LLS = "leastLoadedServer";
     public static final String LOADBALANCER_STRATEGY_RAND = "weightedRandomSelection";
+    public static final String LOADBALANCER_STRATEGY_LEAST_MSG = "leastMsgPerSecond";
 
     private String brokerZnodePath;
     private final ScheduledExecutorService scheduler;
@@ -671,6 +672,9 @@ public class SimpleLoadManagerImpl implements LoadManager, ZooKeeperCacheListene
                     long finalRank = 0;
                     if (strategy.equals(LOADBALANCER_STRATEGY_LLS)) {
                         finalRank = (long) loadPercentage;
+                    } else if (strategy.equals(LOADBALANCER_STRATEGY_LEAST_MSG)) {
+                      finalRank = (long) (allocatedQuota.getMsgRateIn() + allocatedQuota.getMsgRateOut() +
+                              preAllocatedQuota.getMsgRateIn() + preAllocatedQuota.getMsgRateOut());
                     } else {
                         double idleRatio = (100 - loadPercentage) / 100;
                         finalRank = (long) (maxCapacity * idleRatio * idleRatio);
@@ -1119,13 +1123,32 @@ public class SimpleLoadManagerImpl implements LoadManager, ZooKeeperCacheListene
             }
             loadReport.setBundleGains(bundleGains);
             loadReport.setBundleLosses(bundleLosses);
-            final ResourceQuota totalQuota = getTotalAllocatedQuota(newBundles);
-            loadReport.setAllocatedCPU((totalQuota.getMsgRateIn() + totalQuota.getMsgRateOut()) * realtimeCpuLoadFactor);
-            loadReport.setAllocatedMemory(totalQuota.getMemory());
-            loadReport.setAllocatedBandwidthIn(totalQuota.getBandwidthIn());
-            loadReport.setAllocatedBandwidthOut(totalQuota.getBandwidthOut());
 
+            final ResourceQuota allocatedQuota = getTotalAllocatedQuota(newBundles);
+            loadReport.setAllocatedCPU((allocatedQuota.getMsgRateIn() + allocatedQuota.getMsgRateOut())
+                    * realtimeCpuLoadFactor);
+            loadReport.setAllocatedMemory(allocatedQuota.getMemory());
+            loadReport.setAllocatedBandwidthIn(allocatedQuota.getBandwidthIn());
+            loadReport.setAllocatedBandwidthOut(allocatedQuota.getBandwidthOut());
+            final ResourceUnit resourceUnit = new SimpleResourceUnit(String.format("http://%s", loadReport.getName()),
+                    fromLoadReport(loadReport));
+            Set<String> preAllocatedBundles;
+            if (resourceUnitRankings.containsKey(resourceUnit)) {
+                preAllocatedBundles = resourceUnitRankings.get(resourceUnit).getPreAllocatedBundles();
+                preAllocatedBundles.removeAll(newBundles);
+            } else {
+                preAllocatedBundles = new HashSet<>();
+            }
 
+            final ResourceQuota preAllocatedQuota = getTotalAllocatedQuota(preAllocatedBundles);
+
+            loadReport.setPreAllocatedCPU((preAllocatedQuota.getMsgRateIn() + preAllocatedQuota.getMsgRateOut())
+                    * realtimeCpuLoadFactor);
+            loadReport.setPreAllocatedMemory(preAllocatedQuota.getMemory());
+            loadReport.setPreAllocatedBandwidthIn(preAllocatedQuota.getBandwidthIn());
+            loadReport.setPreAllocatedBandwidthOut(preAllocatedQuota.getBandwidthOut());
+            loadReport.setPreAllocatedMsgRateIn(preAllocatedQuota.getMsgRateIn());
+            loadReport.setPreAllocatedMsgRateOut(preAllocatedQuota.getMsgRateOut());
             return loadReport;
         } catch (Exception e) {
             log.error("[{}] Failed to generate LoadReport for broker, reason [{}]", e.getMessage(), e);

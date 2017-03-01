@@ -92,6 +92,8 @@ public class LoadReport {
     private double preAllocatedMemory;
     private double preAllocatedBandwidthIn;
     private double preAllocatedBandwidthOut;
+    private double preAllocatedMsgRateIn;
+    private double preAllocatedMsgRateOut;
 
     public void setBundleStats(Map<String, NamespaceBundleStats> stats) {
         bundleStats = (stats == null) ? null : new HashMap<String, NamespaceBundleStats>(stats);
@@ -336,5 +338,21 @@ public class LoadReport {
 
     public void setPreAllocatedBandwidthOut(double preAllocatedBandwidthOut) {
         this.preAllocatedBandwidthOut = preAllocatedBandwidthOut;
+    }
+
+    public double getPreAllocatedMsgRateIn() {
+        return preAllocatedMsgRateIn;
+    }
+
+    public void setPreAllocatedMsgRateIn(double preAllocatedMsgRateIn) {
+        this.preAllocatedMsgRateIn = preAllocatedMsgRateIn;
+    }
+
+    public double getPreAllocatedMsgRateOut() {
+        return preAllocatedMsgRateOut;
+    }
+
+    public void setPreAllocatedMsgRateOut(double preAllocatedMsgRateOut) {
+        this.preAllocatedMsgRateOut = preAllocatedMsgRateOut;
     }
 }
