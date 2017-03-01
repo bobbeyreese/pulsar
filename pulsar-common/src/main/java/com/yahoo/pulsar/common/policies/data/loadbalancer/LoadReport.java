@@ -59,6 +59,8 @@ public class LoadReport {
         this.pulsarServiceUrl = pulsarServiceUrl;
         this.pulsarServieUrlTls = pulsarServieUrlTls;
 
+        bundleLosses = new HashSet<>();
+        bundleGains = new HashSet<>();
         isUnderLoaded = false;
         isOverLoaded = false;
         timestamp = 0;
@@ -76,6 +78,20 @@ public class LoadReport {
     private SystemResourceUsage systemResourceUsage;
 
     private Map<String, NamespaceBundleStats> bundleStats;
+
+    private Set<String> bundleGains;
+
+    private Set<String> bundleLosses;
+
+    private double allocatedCPU;
+    private double allocatedMemory;
+    private double allocatedBandwidthIn;
+    private double allocatedBandwidthOut;
+
+    private double preAllocatedCPU;
+    private double preAllocatedMemory;
+    private double preAllocatedBandwidthIn;
+    private double preAllocatedBandwidthOut;
 
     public void setBundleStats(Map<String, NamespaceBundleStats> stats) {
         bundleStats = (stats == null) ? null : new HashMap<String, NamespaceBundleStats>(stats);
@@ -240,5 +256,85 @@ public class LoadReport {
 
     public String getPulsarServieUrlTls() {
         return pulsarServieUrlTls;
+    }
+
+    public Set<String> getBundleGains() {
+        return bundleGains;
+    }
+
+    public void setBundleGains(Set<String> bundleGains) {
+        this.bundleGains = bundleGains;
+    }
+
+    public Set<String> getBundleLosses() {
+        return bundleLosses;
+    }
+
+    public void setBundleLosses(Set<String> bundleLosses) {
+        this.bundleLosses = bundleLosses;
+    }
+
+    public double getAllocatedCPU() {
+        return allocatedCPU;
+    }
+
+    public void setAllocatedCPU(double allocatedCPU) {
+        this.allocatedCPU = allocatedCPU;
+    }
+
+    public double getAllocatedMemory() {
+        return allocatedMemory;
+    }
+
+    public void setAllocatedMemory(double allocatedMemory) {
+        this.allocatedMemory = allocatedMemory;
+    }
+
+    public double getAllocatedBandwidthIn() {
+        return allocatedBandwidthIn;
+    }
+
+    public void setAllocatedBandwidthIn(double allocatedBandwidthIn) {
+        this.allocatedBandwidthIn = allocatedBandwidthIn;
+    }
+
+    public double getAllocatedBandwidthOut() {
+        return allocatedBandwidthOut;
+    }
+
+    public void setAllocatedBandwidthOut(double allocatedBandwidthOut) {
+        this.allocatedBandwidthOut = allocatedBandwidthOut;
+    }
+
+    public double getPreAllocatedCPU() {
+        return preAllocatedCPU;
+    }
+
+    public void setPreAllocatedCPU(double preAllocatedCPU) {
+        this.preAllocatedCPU = preAllocatedCPU;
+    }
+
+    public double getPreAllocatedMemory() {
+        return preAllocatedMemory;
+    }
+
+    public void setPreAllocatedMemory(double preAllocatedMemory) {
+        this.preAllocatedMemory = preAllocatedMemory;
+    }
+
+    public double getPreAllocatedBandwidthIn() {
+        return preAllocatedBandwidthIn;
+    }
+
+    public void setPreAllocatedBandwidthIn(double preAllocatedBandwidthIn) {
+        this.preAllocatedBandwidthIn = preAllocatedBandwidthIn;
+    }
+
+    public double getPreAllocatedBandwidthOut() {
+        return preAllocatedBandwidthOut;
+    }
+
+    public void setPreAllocatedBandwidthOut(double preAllocatedBandwidthOut) {
+        this.preAllocatedBandwidthOut = preAllocatedBandwidthOut;
     }
 }

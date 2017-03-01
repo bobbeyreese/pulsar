@@ -88,7 +88,7 @@ public class SimpleLoadManagerImpl implements LoadManager, ZooKeeperCacheListene
     // average JVM heap usage for
     private long avgJvmHeapUsageMBytes = 0;
     // load report got from each broker
-    private Map<ResourceUnit, LoadReport> currentLoadReports;
+    private final Map<ResourceUnit, LoadReport> currentLoadReports;
     // load ranking for each broker from multiple perspective
     private Map<ResourceUnit, ResourceUnitRanking> resourceUnitRankings;
     // sorted load ranking on one single dimension
@@ -1087,7 +1087,6 @@ public class SimpleLoadManagerImpl implements LoadManager, ZooKeeperCacheListene
         if (timeSinceLastGenMillis <= LOAD_REPORT_UPDATE_MIMIMUM_INTERVAL) {
             return lastLoadReport;
         }
-
         try {
             LoadReport loadReport = new LoadReport(pulsar.getWebServiceAddress(), pulsar.getWebServiceAddressTls(),
                 pulsar.getBrokerServiceUrl(), pulsar.getBrokerServiceUrlTls());
@@ -1101,6 +1100,32 @@ public class SimpleLoadManagerImpl implements LoadManager, ZooKeeperCacheListene
             loadReport.setSystemResourceUsage(systemResourceUsage);
             loadReport.setBundleStats(pulsar.getBrokerService().getBundleStats());
             loadReport.setTimestamp(System.currentTimeMillis());
+
+            final Set<String> oldBundles = lastLoadReport.getBundles();
+            final Set<String> newBundles = loadReport.getBundles();
+            final Set<String> bundleGains = new HashSet<>();
+            final Set<String> bundleLosses = new HashSet<>();
+
+            for (String oldBundle: oldBundles) {
+                if (!newBundles.contains(oldBundle)) {
+                    bundleLosses.add(oldBundle);
+                }
+            }
+
+            for (String newBundle: newBundles) {
+                if (!oldBundles.contains(newBundle)) {
+                    bundleGains.add(newBundle);
+                }
+            }
+            loadReport.setBundleGains(bundleGains);
+            loadReport.setBundleLosses(bundleLosses);
+            final ResourceQuota totalQuota = getTotalAllocatedQuota(newBundles);
+            loadReport.setAllocatedCPU((totalQuota.getMsgRateIn() + totalQuota.getMsgRateOut()) * realtimeCpuLoadFactor);
+            loadReport.setAllocatedMemory(totalQuota.getMemory());
+            loadReport.setAllocatedBandwidthIn(totalQuota.getBandwidthIn());
+            loadReport.setAllocatedBandwidthOut(totalQuota.getBandwidthOut());
+
+
             return loadReport;
         } catch (Exception e) {
             log.error("[{}] Failed to generate LoadReport for broker, reason [{}]", e.getMessage(), e);
