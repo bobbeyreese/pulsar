@@ -42,7 +42,7 @@ public class LoadSimulationController {
         List<String> commandArguments;
 
         @Parameter(names = {"--rate"}, description = "Messages per second")
-        double rate = 100;
+        double rate = 1;
 
         @Parameter(names = {"--size"}, description = "Message size in bytes")
         int size = 1024;
@@ -249,8 +249,8 @@ public class LoadSimulationController {
     private void handleGroupStop(final ShellArguments arguments) throws Exception {
         final List<String> commandArguments = arguments.commandArguments;
         if (checkAppArgs(commandArguments.size() - 1, 2)) {
-            final String tenant = commandArguments.get(0);
-            final String group = commandArguments.get(1);
+            final String tenant = commandArguments.get(1);
+            final String group = commandArguments.get(2);
             for (DataOutputStream outputStream: outputStreams) {
                 outputStream.write(LoadSimulationServer.STOP_GROUP_COMMAND);
                 outputStream.writeUTF(tenant);

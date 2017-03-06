@@ -50,7 +50,7 @@ public class LoadSimulationServer {
         public TradeUnit(final TradeConfiguration tradeConf, final PulsarClient client,
                          final ProducerConfiguration producerConf, final ConsumerConfiguration consumerConf,
                          final Map<Integer, byte[]> payloadCache) throws Exception {
-            consumerFuture = client.subscribeAsync(tradeConf.topic, "test-client-subscriber", consumerConf);
+            consumerFuture = client.subscribeAsync(tradeConf.topic, "Subscriber-" + tradeConf.topic, consumerConf);
             producerFuture = client.createProducerAsync(tradeConf.topic, producerConf);
             this.payload = new AtomicReference<>();
             this.payloadCache = payloadCache;
@@ -120,8 +120,6 @@ public class LoadSimulationServer {
         throws Exception {
         tradeConf.tenant = inputStream.readUTF();
         tradeConf.group = inputStream.readUTF();
-        tradeConf.size = inputStream.readInt();
-        tradeConf.rate = inputStream.readDouble();
     }
 
     private void handle(final byte command, final DataInputStream inputStream, final DataOutputStream outputStream)
@@ -162,6 +160,8 @@ public class LoadSimulationServer {
                 break;
             case CHANGE_GROUP_COMMAND:
                 decodeGroupOptions(tradeConf, inputStream);
+                tradeConf.size = inputStream.readInt();
+                tradeConf.rate = inputStream.readDouble();
                 final String groupRegex = ".*://.*/" + tradeConf.tenant + "/" + tradeConf.group + "-.*/.*";
                 int numFound = 0;
                 for (Map.Entry<String, TradeUnit> entry: topicsToTradeUnits.entrySet()) {
@@ -176,12 +176,12 @@ public class LoadSimulationServer {
                 break;
             case STOP_GROUP_COMMAND:
                 decodeGroupOptions(tradeConf, inputStream);
-                final String regex = ".*://.*/.*/" + tradeConf.group + "-.*/.*";
+                final String regex = ".*://.*/" + tradeConf.tenant + "/" + tradeConf.group + "-.*/.*";
                 int numStopped = 0;
                 for (Map.Entry<String, TradeUnit> entry: topicsToTradeUnits.entrySet()) {
                     final String destination = entry.getKey();
                     final TradeUnit unit = entry.getValue();
-                    if (destination.matches(regex) && unit.stop.getAndSet(true)) {
+                    if (destination.matches(regex) && !unit.stop.getAndSet(true)) {
                         ++numStopped;
                     }
                 }
