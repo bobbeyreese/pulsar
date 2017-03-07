@@ -12,6 +12,24 @@ import java.net.Socket;
 import java.util.List;
 import java.util.Random;
 
+/**
+ * To use:
+ * 1. Delegate a list of server machines which act as zookeeper clients.
+ * 2. Choose a port for those machines.
+ * 3. On each of these machines, get them to listen via pulsar-perf simulation-server --port <chosen port>
+ *     --service-url <broker service url>
+ * 4. Start the controller with pulsar-perf simulation-controller --cluster <cluster name>
+ *     --servers <comma separated list of <hostname>:<port> --server-port <chosen port>
+ * 5. You will get a shell on the controller, where you can use the commands trade, change, stop, trade_group,
+ *    change_group, stop_group. You can enter "help" to see the syntax for the commands. Note that tenant, namespace,
+ *    and topic refer to persistent://cluster/tenant/namespace/topic/bundle. For instance, to start trading for
+ *    topic with destination persistent://mycluster/mytenant/mynamespace/mytopic/bundle at rate 200 msgs/s, you would
+ *    type "trade mytenant mynamespace mytopic --rate 200".
+ *    The group commands also refer to a "group_name" parameter. This is a string that is prefixed to the namespaces
+ *    when trade_group is invoked so they may be identified by other group commands. At the moment, groups may not
+ *    be modified after they have been created via trade_group.
+ *
+ */
 public class LoadSimulationController {
     private final DataInputStream[] inputStreams;
     private final DataOutputStream[] outputStreams;
@@ -47,12 +65,12 @@ public class LoadSimulationController {
         @Parameter(names = {"--size"}, description = "Message size in bytes")
         int size = 1024;
 
-        @Parameter(names = {"--separation"}, description = "Separation time in ms for group actions " +
+        @Parameter(names = {"--separation"}, description = "Separation time in ms for trade_group actions " +
         "(0 for no separation)")
         int separation = 0;
 
         @Parameter(names = {"--topics-per-namespace"}, description = "Number of topics to create per namespace in " +
-        "group actions (total number of topics is num_namespaces X num_topics)")
+        "trade_group (total number of topics is num_namespaces X num_topics)")
         int topicsPerNamespace = 1;
     }
 

@@ -15,6 +15,12 @@ import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.*;
 
+/**
+ * To use the monitor, simply choose a port for it and start one via
+ * pulsar-perf monitor --connect-string <zk hostname>:<zk port> --listen-port <chosen-port>.
+ * You will then receive updates in LoadReports as they occur. At the moment, listenPort serves no purpose but it
+ * intended to be used by other code to send information to the monitor.
+ */
 public class BrokerMonitor {
     private ServerSocket socket;
     private static final String BROKER_ROOT = "/loadbalance/brokers";
