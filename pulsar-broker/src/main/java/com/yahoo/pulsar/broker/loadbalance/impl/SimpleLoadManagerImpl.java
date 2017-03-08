@@ -88,7 +88,7 @@ public class SimpleLoadManagerImpl implements LoadManager, ZooKeeperCacheListene
     // average JVM heap usage for
     private long avgJvmHeapUsageMBytes = 0;
     // load report got from each broker
-    private final Map<ResourceUnit, LoadReport> currentLoadReports;
+    private Map<ResourceUnit, LoadReport> currentLoadReports;
     // load ranking for each broker from multiple perspective
     private Map<ResourceUnit, ResourceUnitRanking> resourceUnitRankings;
     // sorted load ranking on one single dimension
@@ -673,8 +673,8 @@ public class SimpleLoadManagerImpl implements LoadManager, ZooKeeperCacheListene
                     if (strategy.equals(LOADBALANCER_STRATEGY_LLS)) {
                         finalRank = (long) loadPercentage;
                     } else if (strategy.equals(LOADBALANCER_STRATEGY_LEAST_MSG)) {
-                      finalRank = (long) (allocatedQuota.getMsgRateIn() + allocatedQuota.getMsgRateOut() +
-                              preAllocatedQuota.getMsgRateIn() + preAllocatedQuota.getMsgRateOut());
+                        finalRank = (long) ranking.getEstimatedMessageRate();
+
                     } else {
                         double idleRatio = (100 - loadPercentage) / 100;
                         finalRank = (long) (maxCapacity * idleRatio * idleRatio);
@@ -757,6 +757,7 @@ public class SimpleLoadManagerImpl implements LoadManager, ZooKeeperCacheListene
         ResourceUnit selectedRU = null;
         ResourceUnitRanking selectedRanking = null;
         String serviceUnitId = serviceUnit.toString();
+        boolean unboundedRanks = getLoadBalancerPlacementStrategy().equals(LOADBALANCER_STRATEGY_LEAST_MSG);
         synchronized (resourceUnitRankings) {
             long randomBrokerIndex = (candidates.size() > 0) ? (this.brokerRotationCursor % candidates.size()) : 0;
             // find the least loaded & not-idle broker
@@ -806,7 +807,7 @@ public class SimpleLoadManagerImpl implements LoadManager, ZooKeeperCacheListene
                         selectedRanking = ranking;
                         minLoadPercentage = loadPercentage;
                     } else {
-                        if (ranking.compareTo(selectedRanking) < 0) {
+                        if ((unboundedRanks ? ranking.compareMessageRateTo(selectedRanking) : ranking.compareTo(selectedRanking)) < 0) {
                             minLoadPercentage = loadPercentage;
                             selectedRU = candidate;
                             selectedRanking = ranking;
@@ -819,10 +820,10 @@ public class SimpleLoadManagerImpl implements LoadManager, ZooKeeperCacheListene
                 // assigned to idle broker is the least loaded broker already have optimum load (which means NOT
                 // underloaded), or all brokers are idle
                 selectedRU = idleRU;
-            } else if (minLoadPercentage >= 100.0 && randomRU != null) {
+            } else if (minLoadPercentage >= 100.0 && randomRU != null && !unboundedRanks) {
                 // all brokers are full, assign to a random one
                 selectedRU = randomRU;
-            } else if (minLoadPercentage > overloadThreshold) {
+            } else if (minLoadPercentage > overloadThreshold && !unboundedRanks) {
                 // assign to the broker with maximum available capacity if all brokers are overloaded
                 selectedRU = maxAvailableRU;
             }
