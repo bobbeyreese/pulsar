@@ -39,6 +39,9 @@ public class ResourceUnitRanking implements Comparable<ResourceUnitRanking> {
     // estimated percentage of resource usage with the already assigned (both loaded and to-be-loaded) bundles
     private double estimatedLoadPercentage;
 
+    // estimated number of total messages with the already assigned (both loaded and to-be-loaded) bundles
+    private double estimatedMessageRate;
+
     private double allocatedLoadPercentageCPU;
     private double allocatedLoadPercentageMemory;
     private double allocatedLoadPercentageBandwidthIn;
@@ -115,6 +118,14 @@ public class ResourceUnitRanking implements Comparable<ResourceUnitRanking> {
                         Math.max(this.estimatedLoadPercentageBandwidthIn, this.estimatedLoadPercentageBandwidthOut))));
     }
 
+    /**
+     * Estimate the total message rate which is the sum of all assigned (both loaded and to-be-loaded) bundles
+     */
+    private void estimateMessageRate() {
+        this.estimatedMessageRate = this.allocatedQuota.getMsgRateIn() + this.allocatedQuota.getMsgRateOut() + 
+                this.preAllocatedQuota.getMsgRateIn() + this.preAllocatedQuota.getMsgRateOut();
+    }
+
     public int compareTo(ResourceUnitRanking other) {
         if (Math.abs(this.estimatedLoadPercentage - other.estimatedLoadPercentage) > PERCENTAGE_DIFFERENCE_THRESHOLD) {
             return Double.compare(this.estimatedLoadPercentage, other.estimatedLoadPercentage);
@@ -136,6 +147,13 @@ public class ResourceUnitRanking implements Comparable<ResourceUnitRanking> {
             return Double.compare(this.estimatedLoadPercentageBandwidthOut, other.estimatedLoadPercentageBandwidthOut);
         }
         return Double.compare(this.estimatedLoadPercentage, other.estimatedLoadPercentage);
+    }
+
+    /**
+     * Compare two loads based on message rate only
+     */
+    public int compareMessageRateTo(ResourceUnitRanking other) {
+        return Double.compare(this.estimatedMessageRate, other.estimatedMessageRate);
     }
 
     /**
