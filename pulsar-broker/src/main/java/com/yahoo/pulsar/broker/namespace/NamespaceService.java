@@ -35,6 +35,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
+import com.yahoo.pulsar.common.policies.data.loadbalancer.ServiceLookupData;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.tuple.Pair;
 import org.apache.zookeeper.AsyncCallback.StatCallback;
@@ -148,12 +149,9 @@ public class NamespaceService {
         return bundleFactory.getFullBundle(fqnn);
     }
 
-    private static final Deserializer<LoadReport> loadReportDeserializer = new Deserializer<LoadReport>() {
-        @Override
-        public LoadReport deserialize(String key, byte[] content) throws Exception {
-            return jsonMapper().readValue(content, LoadReport.class);
-        }
-    };
+    private static final Deserializer<ServiceLookupData> serviceLookupDataDeserializer = (key, content) ->
+            jsonMapper().readValue(content, ServiceLookupData.class);
+
 
 	public URL getWebServiceUrl(ServiceUnitId suName, boolean authoritative, boolean isRequestHttps, boolean readOnly)
 			throws Exception {
@@ -408,11 +406,12 @@ public class NamespaceService {
             URI uri = new URI(candidateBroker);
             String path = String.format("%s/%s:%s", SimpleLoadManagerImpl.LOADBALANCE_BROKERS_ROOT, uri.getHost(),
                     uri.getPort());
-            pulsar.getLocalZkCache().getDataAsync(path, loadReportDeserializer).thenAccept(reportData -> {
+            pulsar.getLocalZkCache().getDataAsync(path, serviceLookupDataDeserializer).thenAccept(reportData -> {
                 if (reportData.isPresent()) {
-                    LoadReport report = reportData.get();
-                    lookupFuture.complete(new LookupResult(report.getWebServiceUrl(), report.getWebServiceUrlTls(),
-                            report.getPulsarServiceUrl(), report.getPulsarServieUrlTls()));
+                    ServiceLookupData lookupData = reportData.get();
+                    lookupFuture.complete(new LookupResult(lookupData.getWebServiceUrl(),
+                            lookupData.getWebServiceUrlTls(), lookupData.getPulsarServiceUrl(),
+                            lookupData.getPulsarServiceUrlTls()));
                 } else {
                     lookupFuture.completeExceptionally(new KeeperException.NoNodeException(path));
                 }

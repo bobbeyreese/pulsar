@@ -30,7 +30,7 @@ import com.yahoo.pulsar.common.configuration.PulsarConfiguration;
  * Pulsar service configuration object.
  *
  */
-public class ServiceConfiguration implements PulsarConfiguration{
+public class ServiceConfiguration implements PulsarConfiguration {
 
     /***** --- pulsar configuration --- ****/
     // Zookeeper quorum connection string
@@ -924,5 +924,140 @@ public class ServiceConfiguration implements PulsarConfiguration{
 
     public void setReplicatorPrefix(String replicatorPrefix) {
         this.replicatorPrefix = replicatorPrefix;
+    }
+
+
+    // Configurations for new load manager API
+
+    // Number of samples to use for short term time window
+    private int numShortSamples = 50;
+
+    // Number of samples to use for long term time window
+    private int numLongSamples = 1000;
+
+    // Non-idle brokers below this threshold will be assigned topics before idle brokers
+    private double underloadThreshold = 0;
+
+    // Brokers above this threshold are considered to be at risk for becoming overloaded
+    private double highLoadThreshold = 10000;
+
+    // Brokers above this threshold are considered to be overloaded
+    private double overloadThreshold = 15000;
+
+    // How often in seconds to update the broker data
+    private long brokerDataUpdateIntervalSeconds = 60;
+
+    // How often in seconds to update the bundle data
+    private long bundleDataUpdateIntervalSeconds = 60;
+
+    // Default throughput in to assume for new bundles
+    private double defaultMsgThroughputIn = 50000;
+
+    // Default throughput out to assume for new bundles
+    private double defaultMsgThroughputOut = 50000;
+
+    // Default message rate in to assume for new bundles
+    private double defaultMsgRateIn = 50;
+
+    // Default message rate out to assume for new bundles
+    private double defaultMsgRateOut = 50;
+
+    // Name of load manager to use
+    private String loadManagerName = "SimpleLoadManager";
+
+    public int getNumShortSamples() {
+        return numShortSamples;
+    }
+
+    public void setNumShortSamples(int numShortSamples) {
+        this.numShortSamples = numShortSamples;
+    }
+
+    public int getNumLongSamples() {
+        return numLongSamples;
+    }
+
+    public void setNumLongSamples(int numLongSamples) {
+        this.numLongSamples = numLongSamples;
+    }
+
+    public double getUnderloadThreshold() {
+        return underloadThreshold;
+    }
+
+    public void setUnderloadThreshold(double underloadThreshold) {
+        this.underloadThreshold = underloadThreshold;
+    }
+
+    public double getHighLoadThreshold() {
+        return highLoadThreshold;
+    }
+
+    public void setHighLoadThreshold(double highLoadThreshold) {
+        this.highLoadThreshold = highLoadThreshold;
+    }
+
+    public double getOverloadThreshold() {
+        return overloadThreshold;
+    }
+
+    public void setOverloadThreshold(double overloadThreshold) {
+        this.overloadThreshold = overloadThreshold;
+    }
+
+    public long getBrokerDataUpdateIntervalSeconds() {
+        return brokerDataUpdateIntervalSeconds;
+    }
+
+    public void setBrokerDataUpdateIntervalSeconds(long brokerDataUpdateIntervalSeconds) {
+        this.brokerDataUpdateIntervalSeconds = brokerDataUpdateIntervalSeconds;
+    }
+
+    public long getBundleDataUpdateIntervalSeconds() {
+        return bundleDataUpdateIntervalSeconds;
+    }
+
+    public void setBundleDataUpdateIntervalSeconds(long bundleDataUpdateIntervalSeconds) {
+        this.bundleDataUpdateIntervalSeconds = bundleDataUpdateIntervalSeconds;
+    }
+
+    public double getDefaultMsgThroughputIn() {
+        return defaultMsgThroughputIn;
+    }
+
+    public void setDefaultMsgThroughputIn(double defaultMsgThroughputIn) {
+        this.defaultMsgThroughputIn = defaultMsgThroughputIn;
+    }
+
+    public double getDefaultMsgThroughputOut() {
+        return defaultMsgThroughputOut;
+    }
+
+    public void setDefaultMsgThroughputOut(double defaultMsgThroughputOut) {
+        this.defaultMsgThroughputOut = defaultMsgThroughputOut;
+    }
+
+    public double getDefaultMsgRateIn() {
+        return defaultMsgRateIn;
+    }
+
+    public void setDefaultMsgRateIn(double defaultMsgRateIn) {
+        this.defaultMsgRateIn = defaultMsgRateIn;
+    }
+
+    public double getDefaultMsgRateOut() {
+        return defaultMsgRateOut;
+    }
+
+    public void setDefaultMsgRateOut(double defaultMsgRateOut) {
+        this.defaultMsgRateOut = defaultMsgRateOut;
+    }
+
+    public String getLoadManagerName() {
+        return loadManagerName;
+    }
+
+    public void setLoadManagerName(String loadManagerName) {
+        this.loadManagerName = loadManagerName;
     }
 }
