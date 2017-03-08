@@ -207,6 +207,13 @@ public class ResourceUnitRanking implements Comparable<ResourceUnitRanking> {
     }
 
     /**
+     * Get the estimated message rate
+     */
+    public double getEstimatedMessageRate() {
+        return this.estimatedMessageRate;
+    }
+
+    /**
      * Percentage of CPU allocated to bundle's quota
      */
     public double getAllocatedLoadPercentageCPU() {
