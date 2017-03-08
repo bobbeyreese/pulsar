@@ -116,14 +116,10 @@ public class ResourceUnitRanking implements Comparable<ResourceUnitRanking> {
         this.estimatedLoadPercentage = Math.max(this.estimatedLoadPercentageCPU,
                 Math.max(this.estimatedLoadPercentageMemory, Math.max(this.estimatedLoadPercentageDirectMemory,
                         Math.max(this.estimatedLoadPercentageBandwidthIn, this.estimatedLoadPercentageBandwidthOut))));
-    }
 
-    /**
-     * Estimate the total message rate which is the sum of all assigned (both loaded and to-be-loaded) bundles
-     */
-    private void estimateMessageRate() {
-        this.estimatedMessageRate = this.allocatedQuota.getMsgRateIn() + this.allocatedQuota.getMsgRateOut() + 
+        this.estimatedMessageRate = this.allocatedQuota.getMsgRateIn() + this.allocatedQuota.getMsgRateOut() +
                 this.preAllocatedQuota.getMsgRateIn() + this.preAllocatedQuota.getMsgRateOut();
+
     }
 
     public int compareTo(ResourceUnitRanking other) {
