@@ -16,8 +16,10 @@ public class BrokerData extends JSONWritable implements ServiceLookupData {
     private ResourceUsage cpu;
     private ResourceUsage memory;
     private ResourceUsage directMemory;
-    private TimeAverageMessageData shortTermData;
-    private TimeAverageMessageData longTermData;
+    private double msgThroughputIn;
+    private double msgThroughputOut;
+    private double msgRateIn;
+    private double msgRateOut;
     private long lastUpdate;
     private Map<String, NamespaceBundleStats> lastStats;
     private int numTopics;
@@ -49,8 +51,6 @@ public class BrokerData extends JSONWritable implements ServiceLookupData {
         bundles = new HashSet<>();
         lastBundleGains = new HashSet<>();
         lastBundleLosses = new HashSet<>();
-        shortTermData = new TimeAverageMessageData(numShortSamples);
-        longTermData = new TimeAverageMessageData(numLongSamples);
     }
 
     public void update(final SystemResourceUsage systemResourceUsage,
@@ -68,10 +68,10 @@ public class BrokerData extends JSONWritable implements ServiceLookupData {
     }
 
     private void updateBundleData(final Map<String, NamespaceBundleStats> bundleStats) {
-        double totalMsgThroughputIn = 0;
-        double totalMsgThroughputOut = 0;
-        double totalMsgRateIn = 0;
-        double totalMsgRateOut = 0;
+        msgRateIn = 0;
+        msgRateOut = 0;
+        msgThroughputIn = 0;
+        msgThroughputOut = 0;
         int totalNumTopics = 0;
         int totalNumBundles = 0;
         int totalNumConsumers = 0;
@@ -93,10 +93,10 @@ public class BrokerData extends JSONWritable implements ServiceLookupData {
                 lastBundleGains.add(bundle);
                 bundles.add(bundle);
             }
-            totalMsgThroughputIn += stats.msgThroughputIn;
-            totalMsgThroughputOut += stats.msgThroughputOut;
-            totalMsgRateIn += stats.msgRateIn;
-            totalMsgRateOut += stats.msgRateOut;
+            msgThroughputIn += stats.msgThroughputIn;
+            msgThroughputOut += stats.msgThroughputOut;
+            msgRateIn += stats.msgRateIn;
+            msgRateOut += stats.msgRateOut;
             totalNumTopics += stats.topics;
             ++totalNumBundles;
             totalNumConsumers += stats.consumerCount;
@@ -106,8 +106,7 @@ public class BrokerData extends JSONWritable implements ServiceLookupData {
         numBundles = totalNumBundles;
         numConsumers = totalNumConsumers;
         numProducers = totalNumProducers;
-        shortTermData.update(totalMsgThroughputIn, totalMsgThroughputOut, totalMsgRateIn, totalMsgRateOut);
-        longTermData.update(totalMsgThroughputIn, totalMsgThroughputOut, totalMsgRateIn, totalMsgRateOut);
+
     }
 
     public ResourceUsage getCpu() {
@@ -166,22 +165,6 @@ public class BrokerData extends JSONWritable implements ServiceLookupData {
         this.bundles = bundles;
     }
 
-    public TimeAverageMessageData getShortTermData() {
-        return shortTermData;
-    }
-
-    public TimeAverageMessageData getLongTermData() {
-        return longTermData;
-    }
-
-    public void setShortTermData(TimeAverageMessageData shortTermData) {
-        this.shortTermData = shortTermData;
-    }
-
-    public void setLongTermData(TimeAverageMessageData longTermData) {
-        this.longTermData = longTermData;
-    }
-
     public Map<String, NamespaceBundleStats> getLastStats() {
         return lastStats;
     }
@@ -220,6 +203,38 @@ public class BrokerData extends JSONWritable implements ServiceLookupData {
 
     public void setNumProducers(int numProducers) {
         this.numProducers = numProducers;
+    }
+
+    public double getMsgThroughputIn() {
+        return msgThroughputIn;
+    }
+
+    public void setMsgThroughputIn(double msgThroughputIn) {
+        this.msgThroughputIn = msgThroughputIn;
+    }
+
+    public double getMsgThroughputOut() {
+        return msgThroughputOut;
+    }
+
+    public void setMsgThroughputOut(double msgThroughputOut) {
+        this.msgThroughputOut = msgThroughputOut;
+    }
+
+    public double getMsgRateIn() {
+        return msgRateIn;
+    }
+
+    public void setMsgRateIn(double msgRateIn) {
+        this.msgRateIn = msgRateIn;
+    }
+
+    public double getMsgRateOut() {
+        return msgRateOut;
+    }
+
+    public void setMsgRateOut(double msgRateOut) {
+        this.msgRateOut = msgRateOut;
     }
 
     @Override

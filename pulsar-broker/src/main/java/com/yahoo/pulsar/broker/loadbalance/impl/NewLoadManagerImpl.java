@@ -30,6 +30,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 
 public class NewLoadManagerImpl implements NewLoadManager, ZooKeeperCacheListener<BrokerData> {
+    public static final String TIME_AVERAGE_BROKER_ZPATH = "/loadbalance/broker-time-average";
     public static final String BUNDLE_DATA_ZPATH = "/loadbalance/bundle-data";
     public static final String DEFAULT_BUNDLE_DATA_ZPATH = "/loadbalance/bundle-data/default";
 
@@ -38,8 +39,10 @@ public class NewLoadManagerImpl implements NewLoadManager, ZooKeeperCacheListene
 
     private final BrokerData localData;
     private final Map<String, BrokerData> brokerData;
+    private final Map<String, TimeAverageBrokerData> timeAverageBrokerData;
     private final Map<String, BundleData> bundleData;
     private final Map<String, Map<String, BundleData>> preallocatedBundleData;
+    private final Map<String, String> preallocatedBundleToBroker;
     private final NewPlacementStrategy placementStrategy;
     private final PulsarService pulsar;
     private final ZooKeeper zkClient;
@@ -60,7 +63,9 @@ public class NewLoadManagerImpl implements NewLoadManager, ZooKeeperCacheListene
         conf = pulsar.getConfiguration();
         brokerData = new ConcurrentHashMap<>();
         bundleData = new ConcurrentHashMap<>();
+        timeAverageBrokerData = new ConcurrentHashMap<>();
         preallocatedBundleData = new ConcurrentHashMap<>();
+        preallocatedBundleToBroker = new ConcurrentHashMap<>();
         localData = new BrokerData(conf.getNumShortSamples(), conf.getNumLongSamples(), pulsar.getWebServiceAddress(),
                 pulsar.getWebServiceAddressTls(), pulsar.getBrokerServiceUrl(), pulsar.getBrokerServiceUrlTls());
         placementStrategy = NewPlacementStrategy.create(conf);
@@ -111,18 +116,20 @@ public class NewLoadManagerImpl implements NewLoadManager, ZooKeeperCacheListene
                             final Iterator<Map.Entry<String, BundleData>> preallocatedIterator =
                                     preallocatedBundleData.get(broker).entrySet().iterator();
                             while (preallocatedIterator.hasNext()) {
-                                if (data.getLastStats().containsKey(preallocatedIterator.next().getKey())) {
+                                final String bundle = preallocatedIterator.next().getKey();
+                                if (data.getLastStats().containsKey(bundle)) {
                                     preallocatedIterator.remove();
+                                    preallocatedBundleToBroker.remove(bundle);
                                 }
                             }
                         }
                     } catch (Exception e) {
-                        log.warn("Error reading load report from Cache for broker - [{}], [{}]", broker, e);
+                        log.warn("Error reading broker data from cache for broker - [{}], [{}]", broker, e);
                     }
                 }
             }
         } catch (Exception e) {
-            log.warn("Error reading active brokers list from zookeeper while re-ranking load reports [{}]", e);
+            log.warn("Error reading active brokers list from zookeeper while updating broker data [{}]", e);
         }
     }
 
@@ -155,6 +162,12 @@ public class NewLoadManagerImpl implements NewLoadManager, ZooKeeperCacheListene
                     newBundleData.update(stats);
                     bundleData.put(bundle, newBundleData);
                 }
+            }
+            if (timeAverageBrokerData.containsKey(broker)) {
+                timeAverageBrokerData.get(broker).reset(statsMap.keySet(), bundleData, defaultStats);
+            } else {
+                timeAverageBrokerData.put(broker, new TimeAverageBrokerData(statsMap.keySet(), bundleData,
+                        defaultStats));
             }
         }
     }
@@ -233,13 +246,17 @@ public class NewLoadManagerImpl implements NewLoadManager, ZooKeeperCacheListene
     }
 
     @Override
-    public String selectBrokerForAssignment(final String bundle) {
+    public synchronized String selectBrokerForAssignment(final String bundle) {
+        if (preallocatedBundleToBroker.containsKey(bundle)) {
+            return preallocatedBundleToBroker.get(bundle);
+        }
         final BundleData data = bundleData.computeIfAbsent(bundle,
                 key -> new BundleData(conf.getNumShortSamples(), conf.getNumLongSamples(), defaultStats));
         final String broker = placementStrategy.selectBroker(brokerData, data, preallocatedBundleData);
 
         // Add new bundle to preallocated.
         preallocatedBundleData.computeIfAbsent(broker, key -> new ConcurrentHashMap<>()).put(bundle, data);
+        preallocatedBundleToBroker.put(bundle, broker);
         return broker;
     }
 
@@ -251,6 +268,7 @@ public class NewLoadManagerImpl implements NewLoadManager, ZooKeeperCacheListene
 
             String lookupServiceAddress = pulsar.getAdvertisedAddress() + ":" + conf.getWebServicePort();
             brokerZnodePath = SimpleLoadManagerImpl.LOADBALANCE_BROKERS_ROOT + "/" + lookupServiceAddress;
+            final String timeAverageZPath = TIME_AVERAGE_BROKER_ZPATH + "/" + lookupServiceAddress;
             updateLocalBrokerData();
             try {
                 ZkUtils.createFullPathOptimistic(pulsar.getZkClient(), brokerZnodePath, localData.getJsonBytes(),
@@ -260,6 +278,8 @@ public class NewLoadManagerImpl implements NewLoadManager, ZooKeeperCacheListene
                 log.error("Unable to create znode - [{}] for load balance on zookeeper ", brokerZnodePath, e);
                 throw e;
             }
+            createZPathIfNotExists(zkClient, timeAverageZPath);
+            zkClient.setData(timeAverageZPath, (new TimeAverageBrokerData()).getJsonBytes(), -1);
             updateAllBrokerData();
             lastBundleDataUpdate = System.currentTimeMillis();
             baselineSystemResourceUsage = getSystemResourceUsage();
@@ -299,6 +319,17 @@ public class NewLoadManagerImpl implements NewLoadManager, ZooKeeperCacheListene
                     zkClient.setData(zooKeeperPath, data.getJsonBytes(), -1);
                 } catch (Exception e) {
                     log.warn("Error when writing data for bundle {} to ZooKeeper: {}", bundle, e);
+                }
+            }
+            for (Map.Entry<String, TimeAverageBrokerData> entry: timeAverageBrokerData.entrySet()) {
+                final String broker = entry.getKey();
+                final TimeAverageBrokerData data = entry.getValue();
+                try {
+                    final String zooKeeperPath = TIME_AVERAGE_BROKER_ZPATH + "/" + broker;
+                    createZPathIfNotExists(zkClient, zooKeeperPath);
+                    zkClient.setData(zooKeeperPath, data.getJsonBytes(), -1);
+                } catch (Exception e) {
+                    log.warn("Error when writing time average broker data for {} to ZooKeeper: {}", broker, e);
                 }
             }
         }

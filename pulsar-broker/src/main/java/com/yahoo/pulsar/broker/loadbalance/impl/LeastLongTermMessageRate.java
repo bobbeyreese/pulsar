@@ -4,10 +4,14 @@ import com.yahoo.pulsar.broker.BrokerData;
 import com.yahoo.pulsar.broker.BundleData;
 import com.yahoo.pulsar.broker.TimeAverageMessageData;
 import com.yahoo.pulsar.broker.loadbalance.NewPlacementStrategy;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.Map;
 
 public final class LeastLongTermMessageRate implements NewPlacementStrategy {
+    private static Logger log = LoggerFactory.getLogger(LeastLongTermMessageRate.class);
+
     private LeastLongTermMessageRate(){}
     public static final LeastLongTermMessageRate instance = new LeastLongTermMessageRate();
 
@@ -19,8 +23,7 @@ public final class LeastLongTermMessageRate implements NewPlacementStrategy {
                 totalMessageRate += longTermData.getMsgRateIn() + longTermData.getMsgRateOut();
             }
         }
-        final TimeAverageMessageData longTermBrokerData = brokerData.getLongTermData();
-        return totalMessageRate + longTermBrokerData.getMsgRateIn() + longTermBrokerData.getMsgRateOut();
+        return totalMessageRate + brokerData.getMsgRateIn() + brokerData.getMsgRateOut();
     }
 
     @Override
@@ -33,6 +36,7 @@ public final class LeastLongTermMessageRate implements NewPlacementStrategy {
             final BrokerData currentBrokerData = entry.getValue();
             final Map<String, BundleData> currentPreallocatedData = preallocatedData.get(broker);
             final double score = getScore(currentBrokerData, currentPreallocatedData);
+            log.info("{} got score {}", broker, score);
             if (score < minScore) {
                 minScore = score;
                 bestBroker = broker;

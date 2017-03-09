@@ -4,7 +4,9 @@ import com.beust.jcommander.JCommander;
 import com.beust.jcommander.Parameter;
 import com.google.gson.Gson;
 import com.yahoo.pulsar.broker.BrokerData;
+import com.yahoo.pulsar.broker.TimeAverageBrokerData;
 import com.yahoo.pulsar.broker.TimeAverageMessageData;
+import com.yahoo.pulsar.broker.loadbalance.impl.NewLoadManagerImpl;
 import org.apache.zookeeper.WatchedEvent;
 import org.apache.zookeeper.Watcher;
 import org.apache.zookeeper.ZooKeeper;
@@ -73,9 +75,14 @@ public class NewBrokerMonitor {
             this.zkClient = zkClient;
         }
 
+        public static String brokerNameFromPath(final String path) {
+            return path.substring(path.lastIndexOf('/') + 1);
+        }
+
         public synchronized void process(final WatchedEvent event) {
             try {
                 if (event.getType() == Event.EventType.NodeDataChanged) {
+                    final String broker = brokerNameFromPath(event.getPath());
                     printBrokerData(event.getPath());
                 }
             } catch (Exception ex) {
@@ -83,24 +90,25 @@ public class NewBrokerMonitor {
             }
         }
 
-        private static void printTimeAverageData(final TimeAverageMessageData data) {
-            System.out.println("Num Samples: " + data.getNumSamples());
-            System.out.format("Message Throughput In: %.2f bytes/s\n", data.getMsgThroughputIn());
-            System.out.format("Message Throughput Out: %.2f bytes/s\n", data.getMsgThroughputOut());
-            System.out.format("Message Rate In: %.2f msgs/s\n", data.getMsgRateIn());
-            System.out.format("Message Rate Out: %.2f msgs/s\n", data.getMsgRateOut());
+        private static void printMessageData(final double msgThroughputIn, final double msgThroughputOut,
+                                             final double msgRateIn, final double msgRateOut) {
+            System.out.format("Message Throughput In: %.2f bytes/s\n", msgThroughputIn);
+            System.out.format("Message Throughput Out: %.2f bytes/s\n", msgThroughputOut);
+            System.out.format("Message Rate In: %.2f msgs/s\n", msgRateIn);
+            System.out.format("Message Rate Out: %.2f msgs/s\n", msgRateOut);
         }
 
-        public synchronized void printBrokerData(final String path) {
-            final String brokerName = path.substring(path.lastIndexOf('/') + 1);
+        public synchronized void printBrokerData(final String brokerPath) {
+            final String broker = brokerNameFromPath(brokerPath);
+            final String timeAveragePath = NewLoadManagerImpl.TIME_AVERAGE_BROKER_ZPATH + "/" + broker;
             BrokerData brokerData;
             try {
-                brokerData = gson.fromJson(new String(zkClient.getData(path, this, null)), BrokerData.class);
+                brokerData = gson.fromJson(new String(zkClient.getData(brokerPath, this, null)), BrokerData.class);
             } catch (Exception ex) {
                 throw new RuntimeException(ex);
             }
 
-            System.out.println("\nBroker Data for " + brokerName + ":");
+            System.out.println("\nBroker Data for " + broker + ":");
             System.out.println("---------------");
 
 
@@ -115,11 +123,27 @@ public class NewBrokerMonitor {
 
             System.out.println(String.format("Direct Memory: %.2f%%", brokerData.getDirectMemory().percentUsage()));
 
-            System.out.println("\nShort Term Data:");
-            printTimeAverageData(brokerData.getShortTermData());
+            System.out.println("\nLatest Data:\n");
+            printMessageData(brokerData.getMsgThroughputIn(), brokerData.getMsgThroughputOut(),
+                    brokerData.getMsgRateIn(), brokerData.getMsgRateOut());
 
-            System.out.println("\nLong Term Data:");
-            printTimeAverageData(brokerData.getLongTermData());
+            TimeAverageBrokerData timeAverageData;
+            try {
+                timeAverageData = gson.fromJson(new String(zkClient.getData(timeAveragePath, null, null)),
+                        TimeAverageBrokerData.class);
+            } catch (Exception ex) {
+                throw new RuntimeException(ex);
+            }
+            System.out.println("\nShort Term Data:\n");
+            printMessageData(timeAverageData.getShortTermMsgThroughputIn(),
+                    timeAverageData.getShortTermMsgThroughputOut(), timeAverageData.getShortTermMsgThroughputIn(),
+                    timeAverageData.getShortTermMsgRateOut());
+
+            System.out.println("\nLong Term Data:\n");
+            printMessageData(timeAverageData.getLongTermMsgThroughputIn(),
+                    timeAverageData.getLongTermMsgThroughputOut(), timeAverageData.getLongTermMsgRateIn(),
+                    timeAverageData.getShortTermMsgRateOut());
+
 
             System.out.println();
             if (!brokerData.getLastBundleGains().isEmpty()) {
