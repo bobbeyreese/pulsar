@@ -3,8 +3,8 @@ package com.yahoo.pulsar.testclient;
 import com.beust.jcommander.JCommander;
 import com.beust.jcommander.Parameter;
 import com.google.gson.Gson;
-import com.yahoo.pulsar.common.policies.data.loadbalancer.LoadReport;
-import com.yahoo.pulsar.common.policies.data.loadbalancer.SystemResourceUsage;
+import com.yahoo.pulsar.broker.BrokerData;
+import com.yahoo.pulsar.broker.TimeAverageMessageData;
 import org.apache.zookeeper.WatchedEvent;
 import org.apache.zookeeper.Watcher;
 import org.apache.zookeeper.ZooKeeper;
@@ -13,15 +13,11 @@ import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.net.ServerSocket;
 import java.net.Socket;
-import java.util.*;
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.Set;
 
-/**
- * To use the monitor, simply choose a port for it and start one via
- * pulsar-perf monitor --connect-string <zk hostname>:<zk port> --listen-port <chosen-port>.
- * You will then receive updates in LoadReports as they occur. At the moment, listenPort serves no purpose but it
- * intended to be used by other code to send information to the monitor.
- */
-public class BrokerMonitor {
+public class NewBrokerMonitor {
     private ServerSocket socket;
     private static final String BROKER_ROOT = "/loadbalance/brokers";
     private static final int ZOOKEEPER_TIMEOUT_MILLIS = 5000;
@@ -62,87 +58,78 @@ public class BrokerMonitor {
             for (String newBroker: newBrokers) {
                 if (!brokers.contains(newBroker)) {
                     System.out.println("Gained broker: " + newBroker);
-                    final LoadReportWatcher loadReportWatcher = new LoadReportWatcher(zkClient);
-                    loadReportWatcher.printLoadReport(path + "/" + newBroker);
+                    final BrokerDataWatcher brokerDataWatcher = new BrokerDataWatcher(zkClient);
+                    brokerDataWatcher.printBrokerData(path + "/" + newBroker);
                 }
             }
             this.brokers = newBrokers;
         }
     }
 
-    private static class LoadReportWatcher implements Watcher {
+    private static class BrokerDataWatcher implements Watcher {
         private final ZooKeeper zkClient;
 
-        public LoadReportWatcher(final ZooKeeper zkClient) {
+        public BrokerDataWatcher(final ZooKeeper zkClient) {
             this.zkClient = zkClient;
         }
 
         public synchronized void process(final WatchedEvent event) {
             try {
                 if (event.getType() == Event.EventType.NodeDataChanged) {
-                    printLoadReport(event.getPath());
+                    printBrokerData(event.getPath());
                 }
             } catch (Exception ex) {
                 throw new RuntimeException(ex);
             }
         }
 
-        public synchronized void printLoadReport(final String path) {
+        private static void printTimeAverageData(final TimeAverageMessageData data) {
+            System.out.println("Num Samples: " + data.getNumSamples());
+            System.out.format("Message Throughput In: %.2f bytes/s\n", data.getMsgThroughputIn());
+            System.out.format("Message Throughput Out: %.2f bytes/s\n", data.getMsgThroughputOut());
+            System.out.format("Message Rate In: %.2f msgs/s\n", data.getMsgRateIn());
+            System.out.format("Message Rate Out: %.2f msgs/s\n", data.getMsgRateOut());
+        }
+
+        public synchronized void printBrokerData(final String path) {
             final String brokerName = path.substring(path.lastIndexOf('/') + 1);
-            LoadReport loadReport;
+            BrokerData brokerData;
             try {
-                loadReport = gson.fromJson(new String(zkClient.getData(path, this, null)), LoadReport.class);
+                brokerData = gson.fromJson(new String(zkClient.getData(path, this, null)), BrokerData.class);
             } catch (Exception ex) {
                 throw new RuntimeException(ex);
             }
-            final SystemResourceUsage resourceUsage = loadReport.getSystemResourceUsage();
 
-            System.out.println("\nLoad Report for " + brokerName + ":");
+            System.out.println("\nBroker Data for " + brokerName + ":");
             System.out.println("---------------");
 
 
-            System.out.println("\nNum Topics: " + loadReport.getNumTopics());
-            System.out.println("Num Bundles: " + loadReport.getNumBundles());
+            System.out.println("\nNum Topics: " + brokerData.getNumTopics());
+            System.out.println("Num Bundles: " + brokerData.getNumBundles());
+            System.out.println("Num Consumers: " + brokerData.getNumConsumers());
+            System.out.println("Num Producers: " + brokerData.getNumProducers());
 
-            System.out.format("\nRaw CPU: %.2f%%\n", resourceUsage.getCpu().percentUsage());
-            System.out.println(String.format("Allocated CPU: %.2f%%",
-                    percentUsage(loadReport.getAllocatedCPU(), resourceUsage.getCpu().limit)));
-            System.out.println(String.format("Preallocated CPU: %.2f%%",
-                    percentUsage(loadReport.getPreAllocatedCPU(), resourceUsage.getCpu().limit)));
+            System.out.println(String.format("\nCPU: %.2f%%", brokerData.getCpu().percentUsage()));
 
-            System.out.format("\nRaw Memory: %.2f%%\n", resourceUsage.getMemory().percentUsage());
-            System.out.println(String.format("Allocated Memory: %.2f%%",
-                    percentUsage(loadReport.getAllocatedMemory(), resourceUsage.getMemory().limit)));
-            System.out.println(String.format("Preallocated Memory: %.2f%%",
-                    percentUsage(loadReport.getPreAllocatedMemory(), resourceUsage.getMemory().limit)));
+            System.out.println(String.format("Memory: %.2f%%", brokerData.getMemory().percentUsage()));
 
-            System.out.format("\nRaw Bandwidth In: %.2f%%\n", resourceUsage.getBandwidthIn().percentUsage());
-            System.out.println(String.format("Allocated Bandwidth In: %.2f%%",
-                    percentUsage(loadReport.getAllocatedBandwidthIn(), resourceUsage.getBandwidthIn().limit)));
-            System.out.println(String.format("Preallocated Bandwidth In: %.2f%%",
-                    percentUsage(loadReport.getPreAllocatedBandwidthIn(), resourceUsage.getBandwidthIn().limit)));
+            System.out.println(String.format("Direct Memory: %.2f%%", brokerData.getDirectMemory().percentUsage()));
 
-            System.out.format("\nRaw Bandwidth Out: %.2f%%\n", resourceUsage.getBandwidthOut().percentUsage());
-            System.out.println(String.format("Allocated Bandwidth Out: %.2f%%",
-                    percentUsage(loadReport.getAllocatedBandwidthOut(), resourceUsage.getBandwidthOut().limit)));
-            System.out.println(String.format("Preallocated Bandwidth Out: %.2f%%",
-                    percentUsage(loadReport.getPreAllocatedBandwidthOut(), resourceUsage.getBandwidthOut().limit)));
+            System.out.println("\nShort Term Data:");
+            printTimeAverageData(brokerData.getShortTermData());
 
-            System.out.format("\nDirect Memory: %.2f%%\n", resourceUsage.getDirectMemory().percentUsage());
+            System.out.println("\nLong Term Data:");
+            printTimeAverageData(brokerData.getLongTermData());
 
-            System.out.format("Messages In Per Second: %.2f\n", loadReport.getMsgRateIn());
-            System.out.format("Messages Out Per Second: %.2f\n", loadReport.getMsgRateOut());
-            System.out.format("Preallocated Messages In Per Second: %.2f\n", loadReport.getPreAllocatedMsgRateIn());
-            System.out.format("Preallocated Out Per Second: %.2f\n", loadReport.getPreAllocatedMsgRateOut());
             System.out.println();
-            if (!loadReport.getBundleGains().isEmpty()) {
-                for (String bundle: loadReport.getBundleGains()) {
+            if (!brokerData.getLastBundleGains().isEmpty()) {
+                for (String bundle: brokerData.getLastBundleGains()) {
                     System.out.println("Gained Bundle: " + bundle);
                 }
                 System.out.println();
             }
-            if (!loadReport.getBundleLosses().isEmpty()) {
-                for (String bundle: loadReport.getBundleLosses()) {
+            if (!brokerData.getLastBundleLosses().isEmpty()) {
+                for (String bundle: brokerData.getLastBundleLosses()) {
                     System.out.println("Lost Bundle: " + bundle);
                 }
                 System.out.println();
@@ -158,7 +145,7 @@ public class BrokerMonitor {
         public String connectString = null;
     }
 
-    public BrokerMonitor(final ZooKeeper zkClient) {
+    public NewBrokerMonitor(final ZooKeeper zkClient) {
         this.zkClient = zkClient;
     }
 
@@ -218,7 +205,7 @@ public class BrokerMonitor {
             final JCommander jc = new JCommander(arguments);
             jc.parse(args);
             final ZooKeeper zkClient = new ZooKeeper(arguments.connectString, ZOOKEEPER_TIMEOUT_MILLIS, null);
-            final BrokerMonitor monitor = new BrokerMonitor(zkClient);
+            final NewBrokerMonitor monitor = new NewBrokerMonitor(zkClient);
             monitor.start(arguments.listenPort);
         } catch (Exception ex) {
             throw new RuntimeException(ex);

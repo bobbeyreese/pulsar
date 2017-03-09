@@ -238,7 +238,7 @@ public class NewLoadManagerImpl implements NewLoadManager, ZooKeeperCacheListene
                 key -> new BundleData(conf.getNumShortSamples(), conf.getNumLongSamples(), defaultStats));
         final String broker = placementStrategy.selectBroker(brokerData, data, preallocatedBundleData);
 
-        // Add new broker to preallocated.
+        // Add new bundle to preallocated.
         preallocatedBundleData.computeIfAbsent(broker, key -> new ConcurrentHashMap<>()).put(bundle, data);
         return broker;
     }
