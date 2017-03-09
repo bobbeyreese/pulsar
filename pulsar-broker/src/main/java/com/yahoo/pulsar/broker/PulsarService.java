@@ -235,7 +235,7 @@ public class PulsarService implements AutoCloseable {
             this.brokerService = new BrokerService(this);
 
             // Start load management service (even if load balancing is disabled)
-            this.loadManager = new SimpleLoadManagerImpl(this);
+            this.loadManager = LoadManager.create(config, this);
 
             this.startLoadManagementService();
 

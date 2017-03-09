@@ -23,6 +23,7 @@ import java.util.TreeMap;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.google.common.collect.Maps;
+
 import com.yahoo.pulsar.common.policies.data.loadbalancer.SystemResourceUsage.ResourceType;
 
 
@@ -30,15 +31,13 @@ import com.yahoo.pulsar.common.policies.data.loadbalancer.SystemResourceUsage.Re
  * This class represents the overall load of the broker - it includes overall {@link SystemResourceUsage} and
  * {@link NamespaceUsage} for all the namespaces hosted by this broker.
  */
-public class LoadReport {
+public class LoadReport implements ServiceLookupData {
     private String name;
 
     private final String webServiceUrl;
     private final String webServiceUrlTls;
-
     private final String pulsarServiceUrl;
-    private final String pulsarServieUrlTls;
-
+    private final String pulsarServiceUrlTls;
     private boolean isUnderLoaded;
     private boolean isOverLoaded;
     private long timestamp;
@@ -53,12 +52,11 @@ public class LoadReport {
        this(null, null, null, null);
     }
 
-    public LoadReport(String webServiceUrl,  String webServiceUrlTls, String pulsarServiceUrl, String pulsarServieUrlTls) {
-        this.webServiceUrl =  webServiceUrl;
+    public LoadReport(String webServiceUrl,  String webServiceUrlTls, String pulsarServiceUrl, String pulsarServiceUrlTls) {
+        this.webServiceUrl = webServiceUrl;
         this.webServiceUrlTls = webServiceUrlTls;
         this.pulsarServiceUrl = pulsarServiceUrl;
-        this.pulsarServieUrlTls = pulsarServieUrlTls;
-
+        this.pulsarServiceUrlTls = pulsarServiceUrlTls;
         bundleLosses = new HashSet<>();
         bundleGains = new HashSet<>();
         isUnderLoaded = false;
@@ -246,22 +244,6 @@ public class LoadReport {
         return sortedBundleStats;
     }
 
-    public String getWebServiceUrl() {
-        return webServiceUrl;
-    }
-
-    public String getWebServiceUrlTls() {
-        return webServiceUrlTls;
-    }
-
-    public String getPulsarServiceUrl() {
-        return pulsarServiceUrl;
-    }
-
-    public String getPulsarServieUrlTls() {
-        return pulsarServieUrlTls;
-    }
-
     public Set<String> getBundleGains() {
         return bundleGains;
     }
@@ -372,5 +354,25 @@ public class LoadReport {
 
     public void setPreAllocatedMsgRateOut(double preAllocatedMsgRateOut) {
         this.preAllocatedMsgRateOut = preAllocatedMsgRateOut;
+    }
+
+    @Override
+    public String getWebServiceUrl() {
+        return webServiceUrl;
+    }
+
+    @Override
+    public String getWebServiceUrlTls() {
+        return webServiceUrlTls;
+    }
+
+    @Override
+    public String getPulsarServiceUrl() {
+        return pulsarServiceUrl;
+    }
+
+    @Override
+    public String getPulsarServiceUrlTls() {
+        return pulsarServiceUrlTls;
     }
 }
