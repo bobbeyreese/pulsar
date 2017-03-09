@@ -59,6 +59,10 @@ public class LoadSimulationController {
                 "stop_group tenant group_name\n", required = true)
         List<String> commandArguments;
 
+        @Parameter(names = {"--rand-rate"}, description = "Choose message rate uniformly randomly from the next two " +
+                "comma separated values (overrides --rate)")
+        String rangeString = "";
+
         @Parameter(names = {"--rate"}, description = "Messages per second")
         double rate = 1;
 
@@ -107,6 +111,18 @@ public class LoadSimulationController {
     private void writeProducerOptions(final DataOutputStream outputStream, final ShellArguments arguments,
                                       final String destination)
             throws Exception {
+        if (!arguments.rangeString.isEmpty()) {
+            final String[] splits = arguments.rangeString.split(",");
+            if (splits.length != 2) {
+                System.out.println("ERROR: Argument to --rand-rate should be a two comma-separated values");
+                return;
+            }
+            final double first = Double.parseDouble(splits[0]);
+            final double second = Double.parseDouble(splits[1]);
+            final double min = Math.min(first, second);
+            final double max = Math.max(first, second);
+            arguments.rate = random.nextDouble() * (max - min) + min;
+        }
         outputStream.writeUTF(destination);
         outputStream.writeInt(arguments.size);
         outputStream.writeDouble(arguments.rate);

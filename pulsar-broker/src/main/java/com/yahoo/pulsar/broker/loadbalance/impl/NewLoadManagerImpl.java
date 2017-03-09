@@ -1,9 +1,7 @@
 package com.yahoo.pulsar.broker.loadbalance.impl;
 
 import com.yahoo.pulsar.broker.*;
-import com.yahoo.pulsar.broker.loadbalance.BrokerHostUsage;
-import com.yahoo.pulsar.broker.loadbalance.NewLoadManager;
-import com.yahoo.pulsar.broker.loadbalance.NewPlacementStrategy;
+import com.yahoo.pulsar.broker.loadbalance.*;
 import com.yahoo.pulsar.common.policies.data.loadbalancer.NamespaceBundleStats;
 import com.yahoo.pulsar.common.policies.data.loadbalancer.SystemResourceUsage;
 import com.yahoo.pulsar.common.util.ObjectMapperFactory;
@@ -22,9 +20,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
-import java.util.Iterator;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -43,6 +39,9 @@ public class NewLoadManagerImpl implements NewLoadManager, ZooKeeperCacheListene
     private final Map<String, BundleData> bundleData;
     private final Map<String, Map<String, BundleData>> preallocatedBundleData;
     private final Map<String, String> preallocatedBundleToBroker;
+    private final Set<String> brokerCandidateCache;
+    private final List<BrokerFilter> filterPipeline;
+    private final List<LoadSheddingStrategy> loadSheddingPipeline;
     private final NewPlacementStrategy placementStrategy;
     private final PulsarService pulsar;
     private final ZooKeeper zkClient;
@@ -66,6 +65,9 @@ public class NewLoadManagerImpl implements NewLoadManager, ZooKeeperCacheListene
         timeAverageBrokerData = new ConcurrentHashMap<>();
         preallocatedBundleData = new ConcurrentHashMap<>();
         preallocatedBundleToBroker = new ConcurrentHashMap<>();
+        brokerCandidateCache = new HashSet<>();
+        filterPipeline = new ArrayList<>();
+        loadSheddingPipeline = new ArrayList<>();
         localData = new BrokerData(conf.getNumShortSamples(), conf.getNumLongSamples(), pulsar.getWebServiceAddress(),
                 pulsar.getWebServiceAddressTls(), pulsar.getBrokerServiceUrl(), pulsar.getBrokerServiceUrlTls());
         placementStrategy = NewPlacementStrategy.create(conf);
@@ -157,10 +159,21 @@ public class NewLoadManagerImpl implements NewLoadManager, ZooKeeperCacheListene
                 if (bundleData.containsKey(bundle)) {
                     bundleData.get(bundle).update(stats);
                 } else {
-                    final BundleData newBundleData =
-                            new BundleData(conf.getNumShortSamples(), conf.getNumLongSamples());
-                    newBundleData.update(stats);
-                    bundleData.put(bundle, newBundleData);
+                    BundleData currentBundleData = null;
+                    try {
+                        final String bundleZPath = getBundleDataZooKeeperPath(bundle);
+                        if (zkClient.exists(bundleZPath, null) != null) {
+                            currentBundleData = ObjectMapperFactory.getThreadLocal()
+                                    .readValue(zkClient.getData(bundleZPath, null, null), BundleData.class);
+                        }
+                    } catch (Exception e) {
+                        log.warn("Error when trying to check for existing bundle data for bundle {}: {}", bundle, e);
+                    }
+                    if (currentBundleData == null) {
+                        currentBundleData = new BundleData(conf.getNumShortSamples(), conf.getNumLongSamples());
+                    }
+                    currentBundleData.update(stats);
+                    bundleData.put(bundle, currentBundleData);
                 }
             }
             if (timeAverageBrokerData.containsKey(broker)) {
@@ -232,7 +245,14 @@ public class NewLoadManagerImpl implements NewLoadManager, ZooKeeperCacheListene
 
     @Override
     public void doLoadShedding() {
-        // TODO
+        for (LoadSheddingStrategy strategy: loadSheddingPipeline) {
+            final Set<String> namespacesToUnload = strategy.selectBundlesForUnloading(brokerData,
+                    preallocatedBundleData, timeAverageBrokerData, conf);
+            if (namespacesToUnload != null && !namespacesToUnload.isEmpty()) {
+                // TODO: Write code to unload the bundles.
+                return;
+            }
+        }
     }
 
     @Override
@@ -252,7 +272,13 @@ public class NewLoadManagerImpl implements NewLoadManager, ZooKeeperCacheListene
         }
         final BundleData data = bundleData.computeIfAbsent(bundle,
                 key -> new BundleData(conf.getNumShortSamples(), conf.getNumLongSamples(), defaultStats));
-        final String broker = placementStrategy.selectBroker(brokerData, data, preallocatedBundleData);
+        brokerCandidateCache.clear();
+        brokerCandidateCache.addAll(brokerData.keySet());
+        for (BrokerFilter filter: filterPipeline) {
+            filter.filter(brokerCandidateCache, brokerData, data, preallocatedBundleData, timeAverageBrokerData, conf);
+        }
+        final String broker = placementStrategy.selectBroker(brokerCandidateCache, brokerData, data,
+                preallocatedBundleData, timeAverageBrokerData, conf);
 
         // Add new bundle to preallocated.
         preallocatedBundleData.computeIfAbsent(broker, key -> new ConcurrentHashMap<>()).put(bundle, data);

@@ -92,8 +92,8 @@ public class NewBrokerMonitor {
 
         private static void printMessageData(final double msgThroughputIn, final double msgThroughputOut,
                                              final double msgRateIn, final double msgRateOut) {
-            System.out.format("Message Throughput In: %.2f bytes/s\n", msgThroughputIn);
-            System.out.format("Message Throughput Out: %.2f bytes/s\n", msgThroughputOut);
+            System.out.format("Message Throughput In: %.2f KB/s\n", msgThroughputIn / 1024);
+            System.out.format("Message Throughput Out: %.2f KB/s\n", msgThroughputOut / 1024);
             System.out.format("Message Rate In: %.2f msgs/s\n", msgRateIn);
             System.out.format("Message Rate Out: %.2f msgs/s\n", msgRateOut);
         }
@@ -136,13 +136,13 @@ public class NewBrokerMonitor {
             }
             System.out.println("\nShort Term Data:\n");
             printMessageData(timeAverageData.getShortTermMsgThroughputIn(),
-                    timeAverageData.getShortTermMsgThroughputOut(), timeAverageData.getShortTermMsgThroughputIn(),
+                    timeAverageData.getShortTermMsgThroughputOut(), timeAverageData.getShortTermMsgRateIn(),
                     timeAverageData.getShortTermMsgRateOut());
 
             System.out.println("\nLong Term Data:\n");
             printMessageData(timeAverageData.getLongTermMsgThroughputIn(),
                     timeAverageData.getLongTermMsgThroughputOut(), timeAverageData.getLongTermMsgRateIn(),
-                    timeAverageData.getShortTermMsgRateOut());
+                    timeAverageData.getLongTermMsgRateOut());
 
 
             System.out.println();
