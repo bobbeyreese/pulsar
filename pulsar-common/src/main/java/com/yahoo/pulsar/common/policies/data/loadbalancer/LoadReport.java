@@ -85,6 +85,8 @@ public class LoadReport implements ServiceLookupData {
     private double allocatedMemory;
     private double allocatedBandwidthIn;
     private double allocatedBandwidthOut;
+    private double allocatedMsgRateIn;
+    private double allocatedMsgRateOut;
 
     private double preAllocatedCPU;
     private double preAllocatedMemory;
@@ -288,6 +290,22 @@ public class LoadReport implements ServiceLookupData {
 
     public void setAllocatedBandwidthOut(double allocatedBandwidthOut) {
         this.allocatedBandwidthOut = allocatedBandwidthOut;
+    }
+
+    public double getAllocatedMsgRateIn() {
+        return allocatedMsgRateIn;
+    }
+
+    public void setAllocatedMsgRateIn(double allocatedMsgRateIn) {
+        this.allocatedMsgRateIn = allocatedMsgRateIn;
+    }
+
+    public double getAllocatedMsgRateOut() {
+        return allocatedMsgRateOut;
+    }
+
+    public void setAllocatedMsgRateOut(double allocatedMsgRateOut) {
+        this.allocatedMsgRateOut = allocatedMsgRateOut;
     }
 
     public double getPreAllocatedCPU() {

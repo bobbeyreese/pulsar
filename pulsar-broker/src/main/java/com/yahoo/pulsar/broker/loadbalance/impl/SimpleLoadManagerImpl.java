@@ -1131,6 +1131,9 @@ public class SimpleLoadManagerImpl implements LoadManager, ZooKeeperCacheListene
             loadReport.setAllocatedMemory(allocatedQuota.getMemory());
             loadReport.setAllocatedBandwidthIn(allocatedQuota.getBandwidthIn());
             loadReport.setAllocatedBandwidthOut(allocatedQuota.getBandwidthOut());
+            loadReport.setAllocatedMsgRateIn(allocatedQuota.getMsgRateIn());
+            loadReport.setAllocatedMsgRateOut(allocatedQuota.getMsgRateOut());
+
             final ResourceUnit resourceUnit = new SimpleResourceUnit(String.format("http://%s", loadReport.getName()),
                     fromLoadReport(loadReport));
             Set<String> preAllocatedBundles;
