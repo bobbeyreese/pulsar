@@ -4,11 +4,10 @@ import com.beust.jcommander.JCommander;
 import com.beust.jcommander.Parameter;
 import com.beust.jcommander.ParameterException;
 
-import java.io.BufferedReader;
-import java.io.DataInputStream;
-import java.io.DataOutputStream;
-import java.io.InputStreamReader;
+import java.io.*;
 import java.net.Socket;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.util.List;
 import java.util.Random;
 
@@ -295,51 +294,67 @@ public class LoadSimulationController {
         }
     }
 
+    public void read(final String[] args) throws Exception {
+        if (args.length > 0 && !(args.length == 1 && args[0].isEmpty())) {
+            final ShellArguments arguments = new ShellArguments();
+            final JCommander jc = new JCommander(arguments);
+            try {
+                jc.parse(args);
+                final String command = arguments.commandArguments.get(0);
+                switch (command) {
+                    case "trade":
+                        handleTrade(arguments);
+                        break;
+                    case "change":
+                        handleChange(arguments);
+                        break;
+                    case "stop":
+                        handleStop(arguments);
+                        break;
+                    case "trade_group":
+                        handleGroupTrade(arguments);
+                        break;
+                    case "change_group":
+                        handleGroupChange(arguments);
+                        break;
+                    case "stop_group":
+                        handleGroupStop(arguments);
+                        break;
+                    case "script":
+                        final List<String> commandArguments = arguments.commandArguments;
+                        checkAppArgs(commandArguments.size() - 1, 1);
+                        final String scriptName = commandArguments.get(1);
+                        final BufferedReader scriptReader = new BufferedReader(
+                                new InputStreamReader(new FileInputStream(Paths.get(scriptName).toFile())));
+                        String line = scriptReader.readLine();
+                        while (line != null) {
+                            read(line.split("\\s+"));
+                            line = scriptReader.readLine();
+                        }
+                        scriptReader.close();
+                        break;
+                    case "quit":
+                    case "exit":
+                        System.exit(0);
+                        break;
+                    default:
+                        System.out.format("ERROR: Unknown command \"%s\"\n", command);
+                }
+            } catch (ParameterException ex) {
+                ex.printStackTrace();
+                jc.usage();
+            } catch (Exception ex) {
+                ex.printStackTrace();
+            }
+        }
+    }
+
     public void run() throws Exception {
-        final BufferedReader inReader = new BufferedReader(new InputStreamReader(System.in));
+        BufferedReader inReader = new BufferedReader(new InputStreamReader(System.in));
         while (true) {
             System.out.println();
             System.out.print("> ");
-            final String[] args = inReader.readLine().split("\\s+");
-            if (args.length > 0 && !(args.length == 1 && args[0].isEmpty())) {
-                final ShellArguments arguments = new ShellArguments();
-                final JCommander jc = new JCommander(arguments);
-                try {
-                    jc.parse(args);
-                    final String command = arguments.commandArguments.get(0);
-                    switch (command) {
-                        case "trade":
-                            handleTrade(arguments);
-                            break;
-                        case "change":
-                            handleChange(arguments);
-                            break;
-                        case "stop":
-                            handleStop(arguments);
-                            break;
-                        case "trade_group":
-                            handleGroupTrade(arguments);
-                            break;
-                        case "change_group":
-                            handleGroupChange(arguments);
-                            break;
-                        case "stop_group":
-                            handleGroupStop(arguments);
-                            break;
-                        case "quit":
-                        case "exit":
-                            System.exit(0);
-                            break;
-                        default:
-                            System.out.format("ERROR: Unknown command \"%s\"\n", command);
-                    }
-                } catch (ParameterException ex) {
-                    ex.printStackTrace();
-                    jc.usage();
-                } catch (Exception ex) {
-                    ex.printStackTrace();
-                }
-            }
+            read(inReader.readLine().split("\\s+"));
         }
     }
 

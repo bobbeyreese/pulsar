@@ -1,259 +1,51 @@
 package com.yahoo.pulsar.broker;
 
-import com.yahoo.pulsar.common.policies.data.loadbalancer.NamespaceBundleStats;
-import com.yahoo.pulsar.common.policies.data.loadbalancer.ResourceUsage;
-import com.yahoo.pulsar.common.policies.data.loadbalancer.ServiceLookupData;
-import com.yahoo.pulsar.common.policies.data.loadbalancer.SystemResourceUsage;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
-import java.util.*;
+/**
+ * Data class containing three components comprising all the data available for the leader broker about other brokers:
+ * - The local broker data which is written to ZooKeeper by each individual broker (LocalBrokerData).
+ * - The time average bundle data which is written to ZooKeeper by the leader broker (TimeAverageBrokerData).
+ * - The preallocated bundles which are not written to ZooKeeper but are maintained by the leader broker
+ *   (Map<String, BundleData>).
+ */
+public class BrokerData {
+    private LocalBrokerData localData;
+    private TimeAverageBrokerData timeAverageData;
+    private Map<String, BundleData> preallocatedBundleData;
 
-public class BrokerData extends JSONWritable implements ServiceLookupData {
-
-    private final String webServiceUrl;
-    private final String webServiceUrlTls;
-    private final String pulsarServiceUrl;
-    private final String pulsarServiceUrlTls;
-    private ResourceUsage cpu;
-    private ResourceUsage memory;
-    private ResourceUsage directMemory;
-    private double msgThroughputIn;
-    private double msgThroughputOut;
-    private double msgRateIn;
-    private double msgRateOut;
-    private long lastUpdate;
-    private Map<String, NamespaceBundleStats> lastStats;
-    private int numTopics;
-    private int numBundles;
-    private int numConsumers;
-    private int numProducers;
-
-    private Set<String> bundles;
-
-    private Set<String> lastBundleGains;
-    private Set<String> lastBundleLosses;
-
-    // For JSON only.
-    public BrokerData(){
-        this(0, 0, null, null, null, null);
+    /**
+     * Initialize this BrokerData using the most recent local data.
+     * @param localData The data local for the broker.
+     */
+    public BrokerData(final LocalBrokerData localData) {
+        this.localData = localData;
+        timeAverageData = new TimeAverageBrokerData();
+        preallocatedBundleData = new ConcurrentHashMap<>();
     }
 
-    public BrokerData(final int numShortSamples, final int numLongSamples, final String webServiceUrl,
-                      final String webServiceUrlTls, final String pulsarServiceUrl, final String pulsarServiceUrlTls) {
-        this.webServiceUrl = webServiceUrl;
-        this.webServiceUrlTls = webServiceUrlTls;
-        this.pulsarServiceUrl = pulsarServiceUrl;
-        this.pulsarServiceUrlTls = pulsarServiceUrlTls;
-        lastStats = new HashMap<>();
-        lastUpdate = System.currentTimeMillis();
-        cpu = new ResourceUsage();
-        memory = new ResourceUsage();
-        directMemory = new ResourceUsage();
-        bundles = new HashSet<>();
-        lastBundleGains = new HashSet<>();
-        lastBundleLosses = new HashSet<>();
+    public LocalBrokerData getLocalData() {
+        return localData;
     }
 
-    public void update(final SystemResourceUsage systemResourceUsage,
-                       final Map<String, NamespaceBundleStats> bundleStats) {
-        updateSystemResourceUsage(systemResourceUsage);
-        updateBundleData(bundleStats);
-        lastStats = bundleStats;
-        lastUpdate = System.currentTimeMillis();
+    public void setLocalData(LocalBrokerData localData) {
+        this.localData = localData;
     }
 
-    private void updateSystemResourceUsage(final SystemResourceUsage systemResourceUsage) {
-        this.cpu = systemResourceUsage.cpu;
-        this.memory = systemResourceUsage.memory;
-        this.directMemory = systemResourceUsage.directMemory;
+    public TimeAverageBrokerData getTimeAverageData() {
+        return timeAverageData;
     }
 
-    private void updateBundleData(final Map<String, NamespaceBundleStats> bundleStats) {
-        msgRateIn = 0;
-        msgRateOut = 0;
-        msgThroughputIn = 0;
-        msgThroughputOut = 0;
-        int totalNumTopics = 0;
-        int totalNumBundles = 0;
-        int totalNumConsumers = 0;
-        int totalNumProducers = 0;
-        lastBundleGains.clear();
-        lastBundleLosses.clear();
-        final Iterator<String> oldBundleIterator = bundles.iterator();
-        while (oldBundleIterator.hasNext()) {
-            final String bundle = oldBundleIterator.next();
-            if (!bundleStats.containsKey(bundle)) {
-                lastBundleLosses.add(bundle);
-                oldBundleIterator.remove();
-            }
-        }
-        for (Map.Entry<String, NamespaceBundleStats> entry: bundleStats.entrySet()) {
-            final String bundle = entry.getKey();
-            final NamespaceBundleStats stats = entry.getValue();
-            if (!bundles.contains(bundle)) {
-                lastBundleGains.add(bundle);
-                bundles.add(bundle);
-            }
-            msgThroughputIn += stats.msgThroughputIn;
-            msgThroughputOut += stats.msgThroughputOut;
-            msgRateIn += stats.msgRateIn;
-            msgRateOut += stats.msgRateOut;
-            totalNumTopics += stats.topics;
-            ++totalNumBundles;
-            totalNumConsumers += stats.consumerCount;
-            totalNumProducers += stats.producerCount;
-        }
-        numTopics = totalNumTopics;
-        numBundles = totalNumBundles;
-        numConsumers = totalNumConsumers;
-        numProducers = totalNumProducers;
-
+    public void setTimeAverageData(TimeAverageBrokerData timeAverageData) {
+        this.timeAverageData = timeAverageData;
     }
 
-    public ResourceUsage getCpu() {
-        return cpu;
+    public Map<String, BundleData> getPreallocatedBundleData() {
+        return preallocatedBundleData;
     }
 
-    public void setCpu(ResourceUsage cpu) {
-        this.cpu = cpu;
-    }
-
-    public ResourceUsage getMemory() {
-        return memory;
-    }
-
-    public void setMemory(ResourceUsage memory) {
-        this.memory = memory;
-    }
-
-    public ResourceUsage getDirectMemory() {
-        return directMemory;
-    }
-
-    public void setDirectMemory(ResourceUsage directMemory) {
-        this.directMemory = directMemory;
-    }
-
-    public Set<String> getLastBundleGains() {
-        return lastBundleGains;
-    }
-
-    public void setLastBundleGains(Set<String> lastBundleGains) {
-        this.lastBundleGains = lastBundleGains;
-    }
-
-    public Set<String> getLastBundleLosses() {
-        return lastBundleLosses;
-    }
-
-    public void setLastBundleLosses(Set<String> lastBundleLosses) {
-        this.lastBundleLosses = lastBundleLosses;
-    }
-
-    public long getLastUpdate() {
-        return lastUpdate;
-    }
-
-    public void setLastUpdate(long lastUpdate) {
-        this.lastUpdate = lastUpdate;
-    }
-
-    public Set<String> getBundles() {
-        return bundles;
-    }
-
-    public void setBundles(Set<String> bundles) {
-        this.bundles = bundles;
-    }
-
-    public Map<String, NamespaceBundleStats> getLastStats() {
-        return lastStats;
-    }
-
-    public void setLastStats(Map<String, NamespaceBundleStats> lastStats) {
-        this.lastStats = lastStats;
-    }
-
-    public int getNumTopics() {
-        return numTopics;
-    }
-
-    public void setNumTopics(int numTopics) {
-        this.numTopics = numTopics;
-    }
-
-    public int getNumBundles() {
-        return numBundles;
-    }
-
-    public void setNumBundles(int numBundles) {
-        this.numBundles = numBundles;
-    }
-
-    public int getNumConsumers() {
-        return numConsumers;
-    }
-
-    public void setNumConsumers(int numConsumers) {
-        this.numConsumers = numConsumers;
-    }
-
-    public int getNumProducers() {
-        return numProducers;
-    }
-
-    public void setNumProducers(int numProducers) {
-        this.numProducers = numProducers;
-    }
-
-    public double getMsgThroughputIn() {
-        return msgThroughputIn;
-    }
-
-    public void setMsgThroughputIn(double msgThroughputIn) {
-        this.msgThroughputIn = msgThroughputIn;
-    }
-
-    public double getMsgThroughputOut() {
-        return msgThroughputOut;
-    }
-
-    public void setMsgThroughputOut(double msgThroughputOut) {
-        this.msgThroughputOut = msgThroughputOut;
-    }
-
-    public double getMsgRateIn() {
-        return msgRateIn;
-    }
-
-    public void setMsgRateIn(double msgRateIn) {
-        this.msgRateIn = msgRateIn;
-    }
-
-    public double getMsgRateOut() {
-        return msgRateOut;
-    }
-
-    public void setMsgRateOut(double msgRateOut) {
-        this.msgRateOut = msgRateOut;
-    }
-
-    @Override
-    public String getWebServiceUrl() {
-        return webServiceUrl;
-    }
-
-    @Override
-    public String getWebServiceUrlTls() {
-        return webServiceUrlTls;
-    }
-
-    @Override
-    public String getPulsarServiceUrl() {
-        return pulsarServiceUrl;
-    }
-
-    @Override
-    public String getPulsarServiceUrlTls() {
-        return pulsarServiceUrlTls;
+    public void setPreallocatedBundleData(Map<String, BundleData> preallocatedBundleData) {
+        this.preallocatedBundleData = preallocatedBundleData;
     }
 }

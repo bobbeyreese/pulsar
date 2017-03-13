@@ -11,6 +11,9 @@ import com.yahoo.pulsar.common.naming.ServiceUnitId;
 import java.util.Collections;
 import java.util.List;
 
+/**
+ * Wrapper class allowing classes of instance NewLoadManager to be compatible with the interface LoadManager.
+ */
 public class NewLoadManagerWrapper implements LoadManager {
     private NewLoadManager loadManager;
 

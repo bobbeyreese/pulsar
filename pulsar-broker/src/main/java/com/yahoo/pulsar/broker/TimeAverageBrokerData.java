@@ -5,6 +5,9 @@ import com.yahoo.pulsar.common.policies.data.loadbalancer.NamespaceBundleStats;
 import java.util.Map;
 import java.util.Set;
 
+/**
+ * Data class aggregating the short term and long term data across all bundles belonging to a broker.
+ */
 public class TimeAverageBrokerData extends JSONWritable {
     private double shortTermMsgThroughputIn;
     private double shortTermMsgThroughputOut;
@@ -17,11 +20,23 @@ public class TimeAverageBrokerData extends JSONWritable {
 
     public TimeAverageBrokerData() {}
 
+    /**
+     * Initialize a TimeAverageBrokerData.
+     * @param bundles The bundles belonging to the broker.
+     * @param data Map from bundle names to the data for that bundle.
+     * @param defaultStats The stats to use when a bundle belonging to this broker is not found in the bundle data map.
+     */
     public TimeAverageBrokerData(final Set<String> bundles, final Map<String, BundleData> data,
                                  final NamespaceBundleStats defaultStats) {
         reset(bundles, data, defaultStats);
     }
 
+    /**
+     * Reuse this TimeAverageBrokerData using new data.
+     * @param bundles The bundles belonging to the broker.
+     * @param data Map from bundle names to the data for that bundle.
+     * @param defaultStats The stats to use when a bundle belonging to this broker is not found in the bundle data map.
+     */
     public void reset(final Set<String> bundles, final Map<String, BundleData> data,
                       final NamespaceBundleStats defaultStats) {
         shortTermMsgThroughputIn = 0;
