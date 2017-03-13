@@ -353,7 +353,8 @@ public class SimpleLoadManagerImpl implements LoadManager, ZooKeeperCacheListene
     private String getLoadBalancerPlacementStrategy() {
         String strategy = this.getDynamicConfigurationFromZK(LOADBALANCER_DYNAMIC_SETTING_STRATEGY_ZPATH,
             SETTING_NAME_STRATEGY, pulsar.getConfiguration().getLoadBalancerPlacementStrategy());
-        if (!LOADBALANCER_STRATEGY_LLS.equals(strategy) && !LOADBALANCER_STRATEGY_RAND.equals(strategy)) {
+        if (!LOADBALANCER_STRATEGY_LLS.equals(strategy) && !LOADBALANCER_STRATEGY_RAND.equals(strategy)
+                && !LOADBALANCER_STRATEGY_LEAST_MSG.equals(strategy)) {
             strategy = LOADBALANCER_STRATEGY_RAND;
         }
         return strategy;
