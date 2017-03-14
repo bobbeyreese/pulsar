@@ -3,9 +3,8 @@ package com.yahoo.pulsar.testclient;
 import com.beust.jcommander.JCommander;
 import com.beust.jcommander.Parameter;
 import com.google.gson.Gson;
-import com.yahoo.pulsar.broker.BrokerData;
+import com.yahoo.pulsar.broker.LocalBrokerData;
 import com.yahoo.pulsar.broker.TimeAverageBrokerData;
-import com.yahoo.pulsar.broker.TimeAverageMessageData;
 import com.yahoo.pulsar.broker.loadbalance.impl.NewLoadManagerImpl;
 import org.apache.zookeeper.WatchedEvent;
 import org.apache.zookeeper.Watcher;
@@ -101,9 +100,9 @@ public class NewBrokerMonitor {
         public synchronized void printBrokerData(final String brokerPath) {
             final String broker = brokerNameFromPath(brokerPath);
             final String timeAveragePath = NewLoadManagerImpl.TIME_AVERAGE_BROKER_ZPATH + "/" + broker;
-            BrokerData brokerData;
+            LocalBrokerData localBrokerData;
             try {
-                brokerData = gson.fromJson(new String(zkClient.getData(brokerPath, this, null)), BrokerData.class);
+                localBrokerData = gson.fromJson(new String(zkClient.getData(brokerPath, this, null)), LocalBrokerData.class);
             } catch (Exception ex) {
                 throw new RuntimeException(ex);
             }
@@ -112,20 +111,20 @@ public class NewBrokerMonitor {
             System.out.println("---------------");
 
 
-            System.out.println("\nNum Topics: " + brokerData.getNumTopics());
-            System.out.println("Num Bundles: " + brokerData.getNumBundles());
-            System.out.println("Num Consumers: " + brokerData.getNumConsumers());
-            System.out.println("Num Producers: " + brokerData.getNumProducers());
+            System.out.println("\nNum Topics: " + localBrokerData.getNumTopics());
+            System.out.println("Num Bundles: " + localBrokerData.getNumBundles());
+            System.out.println("Num Consumers: " + localBrokerData.getNumConsumers());
+            System.out.println("Num Producers: " + localBrokerData.getNumProducers());
 
-            System.out.println(String.format("\nCPU: %.2f%%", brokerData.getCpu().percentUsage()));
+            System.out.println(String.format("\nCPU: %.2f%%", localBrokerData.getCpu().percentUsage()));
 
-            System.out.println(String.format("Memory: %.2f%%", brokerData.getMemory().percentUsage()));
+            System.out.println(String.format("Memory: %.2f%%", localBrokerData.getMemory().percentUsage()));
 
-            System.out.println(String.format("Direct Memory: %.2f%%", brokerData.getDirectMemory().percentUsage()));
+            System.out.println(String.format("Direct Memory: %.2f%%", localBrokerData.getDirectMemory().percentUsage()));
 
             System.out.println("\nLatest Data:\n");
-            printMessageData(brokerData.getMsgThroughputIn(), brokerData.getMsgThroughputOut(),
-                    brokerData.getMsgRateIn(), brokerData.getMsgRateOut());
+            printMessageData(localBrokerData.getMsgThroughputIn(), localBrokerData.getMsgThroughputOut(),
+                    localBrokerData.getMsgRateIn(), localBrokerData.getMsgRateOut());
 
             TimeAverageBrokerData timeAverageData;
             try {
@@ -146,14 +145,14 @@ public class NewBrokerMonitor {
 
 
             System.out.println();
-            if (!brokerData.getLastBundleGains().isEmpty()) {
-                for (String bundle: brokerData.getLastBundleGains()) {
+            if (!localBrokerData.getLastBundleGains().isEmpty()) {
+                for (String bundle: localBrokerData.getLastBundleGains()) {
                     System.out.println("Gained Bundle: " + bundle);
                 }
                 System.out.println();
             }
-            if (!brokerData.getLastBundleLosses().isEmpty()) {
-                for (String bundle: brokerData.getLastBundleLosses()) {
+            if (!localBrokerData.getLastBundleLosses().isEmpty()) {
+                for (String bundle: localBrokerData.getLastBundleLosses()) {
                     System.out.println("Lost Bundle: " + bundle);
                 }
                 System.out.println();

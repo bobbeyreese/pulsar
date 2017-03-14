@@ -19,7 +19,9 @@ import java.net.Socket;
 import java.util.Map;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Function;
 
 public class LoadSimulationServer {
     public static final byte FOUND_TOPIC = 0;
@@ -40,11 +42,14 @@ public class LoadSimulationServer {
     private final int port;
 
     private static class TradeUnit {
-        final Future<Producer> producerFuture;
-        final Future<Consumer> consumerFuture;
+        Future<Producer> producerFuture;
+        Future<Consumer> consumerFuture;
         final AtomicBoolean stop;
         final RateLimiter rateLimiter;
         final AtomicReference<byte[]> payload;
+        final ProducerConfiguration producerConf;
+        final PulsarClient client;
+        final String topic;
         final Map<Integer, byte[]> payloadCache;
 
         public TradeUnit(final TradeConfiguration tradeConf, final PulsarClient client,
@@ -53,7 +58,10 @@ public class LoadSimulationServer {
             consumerFuture = client.subscribeAsync(tradeConf.topic, "Subscriber-" + tradeConf.topic, consumerConf);
             producerFuture = client.createProducerAsync(tradeConf.topic, producerConf);
             this.payload = new AtomicReference<>();
+            this.producerConf = producerConf;
             this.payloadCache = payloadCache;
+            this.client = client;
+            topic = tradeConf.topic;
             this.payload.set(payloadCache.computeIfAbsent(tradeConf.size, byte[]::new));
             rateLimiter = RateLimiter.create(tradeConf.rate);
             stop = new AtomicBoolean(false);
@@ -64,15 +72,46 @@ public class LoadSimulationServer {
             this.payload.set(payloadCache.computeIfAbsent(tradeConf.size, byte[]::new));
         }
 
-        public void start() throws Exception {
-            final Producer producer = producerFuture.get();
-            final Consumer consumer = consumerFuture.get();
-            while (!stop.get()) {
-                producer.sendAsync(payload.get());
-                rateLimiter.acquire();
+        private Producer getNewProducer() throws Exception {
+            while (true) {
+                try {
+                    return client.createProducerAsync(topic, producerConf).get();
+                } catch (Exception e) {
+                    Thread.sleep(10000);
+                }
             }
-            producer.closeAsync();
-            consumer.closeAsync();
+        }
+
+        private class MutableBoolean {
+            public volatile boolean value = true;
+        }
+
+        private void startImpl(Producer producer, final Consumer consumer) throws Exception {
+            while (!stop.get()) {
+                final MutableBoolean wellnessFlag = new MutableBoolean();
+                final Function<Throwable, ? extends MessageId> exceptionHandler = new Function<Throwable,MessageId>() {
+                    public MessageId apply(final Throwable e) {
+                        wellnessFlag.value = false;
+                        return null;
+                    }
+                };
+                while (!stop.get() && wellnessFlag.value) {
+                    producer.sendAsync(payload.get()).exceptionally(exceptionHandler);
+                    rateLimiter.acquire();
+                }
+                producer.closeAsync();
+                if (!stop.get()) {
+                    producer = getNewProducer();
+                } else {
+                    consumer.closeAsync();
+                }
+            }
+        }
+
+        public void start() throws Exception {
+            Producer producer = producerFuture.get();
+            Consumer consumer = consumerFuture.get();
+            startImpl(producer, consumer);
         }
     }
 
@@ -205,6 +244,7 @@ public class LoadSimulationServer {
                         new DefaultThreadFactory("pulsar-test-client"));
         clientConf = new ClientConfiguration();
         clientConf.setConnectionsPerBroker(0);
+        clientConf.setStatsInterval(0, TimeUnit.SECONDS);
         producerConf = new ProducerConfiguration();
         producerConf.setSendTimeout(0, TimeUnit.SECONDS);
         producerConf.setMessageRoutingMode(ProducerConfiguration.MessageRoutingMode.RoundRobinPartition);
