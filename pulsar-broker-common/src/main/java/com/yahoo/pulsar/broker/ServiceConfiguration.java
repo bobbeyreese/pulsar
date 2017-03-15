@@ -196,6 +196,10 @@ public class ServiceConfiguration implements PulsarConfiguration {
     private boolean loadBalancerEnabled = false;
     // load placement strategy
     private String loadBalancerPlacementStrategy = "weightedRandomSelection"; // weighted random selection
+    // load placement secondary strategy (used to silently test an alternate strategy)
+    private String loadBalancerSecondaryStrategy = null;
+    // are all bundle placement operations forwarded to a lead broker
+    private boolean loadBalancerIsCentralized = false;
     // Percentage of change to trigger load report update
     private int loadBalancerReportUpdateThresholdPercentage = 10;
     // maximum interval to update load report
@@ -722,6 +726,22 @@ public class ServiceConfiguration implements PulsarConfiguration {
 
     public String getLoadBalancerPlacementStrategy() {
         return this.loadBalancerPlacementStrategy;
+    }
+
+    public void setLoadBalancerSecondaryStrategy(String secondaryStrategy) {
+        this.loadBalancerSecondaryStrategy = secondaryStrategy;
+    }
+
+    public String getLoadBalancerSecondaryStrategy() {
+        return this.loadBalancerSecondaryStrategy;
+    }
+
+    public void setLoadBalancerIsCentralized(boolean isCentralized) {
+        this.loadBalancerIsCentralized = isCentralized;
+    }
+
+    public boolean getLoadBalancerIsCentralized() {
+        return this.loadBalancerIsCentralized;
     }
 
     public int getLoadBalancerReportUpdateThresholdPercentage() {

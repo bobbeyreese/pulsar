@@ -246,7 +246,8 @@ public class ResourceUnitRanking implements Comparable<ResourceUnitRanking> {
      */
     public String getEstimatedLoadPercentageString() {
         return String.format(
-                "load: %.1f%% - cpu: %.1f%%, mem: %.1f%%, directMemory: %.1f%%, bandwidthIn: %.1f%%, bandwidthOut: %.1f%%",
+                "msgrate: %.0f, load: %.1f%% - cpu: %.1f%%, mem: %.1f%%, directMemory: %.1f%%, bandwidthIn: %.1f%%, bandwidthOut: %.1f%%",
+                this.estimatedMessageRate,
                 this.estimatedLoadPercentage, this.estimatedLoadPercentageCPU, this.estimatedLoadPercentageMemory,
                 this.estimatedLoadPercentageDirectMemory, this.estimatedLoadPercentageBandwidthIn,
                 this.estimatedLoadPercentageBandwidthOut);
