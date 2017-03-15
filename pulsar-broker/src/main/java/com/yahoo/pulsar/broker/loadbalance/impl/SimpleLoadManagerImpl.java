@@ -120,8 +120,8 @@ public class SimpleLoadManagerImpl implements LoadManager, ZooKeeperCacheListene
     private static final long RESOURCE_QUOTA_MIN_BANDWIDTH_IN = 10000;
     private static final long RESOURCE_QUOTA_MIN_BANDWIDTH_OUT = 10000;
     private static final long RESOURCE_QUOTA_MIN_MEMORY = 2;
-    private static final long RESOURCE_QUOTA_MAX_MSGRATE_IN = 5000;
-    private static final long RESOURCE_QUOTA_MAX_MSGRATE_OUT = 5000;
+    private static final long RESOURCE_QUOTA_MAX_MSGRATE_IN = 0;
+    private static final long RESOURCE_QUOTA_MAX_MSGRATE_OUT = 0;
     private static final long RESOURCE_QUOTA_MAX_BANDWIDTH_IN = 1000000;
     private static final long RESOURCE_QUOTA_MAX_BANDWIDTH_OUT = 1000000;
     private static final long RESOURCE_QUOTA_MAX_MEMORY = 200;
@@ -589,12 +589,10 @@ public class SimpleLoadManagerImpl implements LoadManager, ZooKeeperCacheListene
         }
 
         if (needUpdate) {
-            if (log.isDebugEnabled()) {
-                log.debug(String.format(
-                        "Update quota %s - msgRateIn: %.1f, msgRateOut: %.1f, bandwidthIn: %.1f, bandwidthOut: %.1f, memory: %.1f",
-                        (bundle == null) ? "default" : bundle, newQuota.getMsgRateIn(), newQuota.getMsgRateOut(),
-                        newQuota.getBandwidthIn(), newQuota.getBandwidthOut(), newQuota.getMemory()));
-            }
+            log.info(String.format(
+                    "Update quota %s - msgRateIn: %.1f, msgRateOut: %.1f, bandwidthIn: %.1f, bandwidthOut: %.1f, memory: %.1f",
+                    (bundle == null) ? "default" : bundle, newQuota.getMsgRateIn(), newQuota.getMsgRateOut(),
+                    newQuota.getBandwidthIn(), newQuota.getBandwidthOut(), newQuota.getMemory()));
 
             if (bundle == null) {
                 pulsar.getLocalZkCacheService().getResourceQuotaCache().setDefaultQuota(newQuota);
@@ -686,7 +684,6 @@ public class SimpleLoadManagerImpl implements LoadManager, ZooKeeperCacheListene
                         finalRank = (long) loadPercentage;
                     } else if (strategy.equals(LOADBALANCER_STRATEGY_LEAST_MSG)) {
                         finalRank = (long) ranking.getEstimatedMessageRate();
-
                     } else {
                         double idleRatio = (100 - loadPercentage) / 100;
                         finalRank = (long) (maxCapacity * idleRatio * idleRatio);
@@ -1219,8 +1216,7 @@ public class SimpleLoadManagerImpl implements LoadManager, ZooKeeperCacheListene
                         lastLoadReport.getSystemResourceUsage(),
                         pulsar.getLocalZkCacheService().getResourceQuotaCache().getDefaultQuota());
                 double bundlePercentageChange = (maxCapacity > 0) ? (bundleCountChange * 100 / maxCapacity) : 0;
-                if (newBundleCount < oldBundleCount || bundlePercentageChange > pulsar.getConfiguration()
-                        .getLoadBalancerReportUpdateThresholdPercentage()) {
+                if (newBundleCount != oldBundleCount ) {
                     needUpdate = true;
                 }
 
