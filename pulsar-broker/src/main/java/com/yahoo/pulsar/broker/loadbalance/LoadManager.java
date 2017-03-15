@@ -84,6 +84,11 @@ public interface LoadManager {
     void doNamespaceBundleSplit() throws Exception;
 
     /**
+     * Determine the broker root.
+     */
+    String getBrokerRoot();
+
+    /**
      * Removes visibility of current broker from loadbalancer list so, other brokers can't redirect any request to this
      * broker and this broker won't accept new connection requests.
      *
