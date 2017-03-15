@@ -195,7 +195,7 @@ public class ServiceConfiguration implements PulsarConfiguration {
     // Percentage of change to trigger load report update
     private int loadBalancerReportUpdateThresholdPercentage = 10;
     // maximum interval to update load report
-    private int loadBalancerReportUpdateMaxIntervalMinutes = 15;
+    private int loadBalancerReportUpdateMaxIntervalMinutes = 1;
     // Frequency of report to collect
     private int loadBalancerHostUsageCheckIntervalMinutes = 1;
     // Load shedding interval. Broker periodically checks whether some traffic
