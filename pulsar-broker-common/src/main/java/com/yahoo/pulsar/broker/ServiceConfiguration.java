@@ -971,15 +971,6 @@ public class ServiceConfiguration implements PulsarConfiguration {
     // Number of samples to use for long term time window
     private int numLongSamples = 1000;
 
-    // Non-idle brokers below this threshold will be assigned topics before idle brokers
-    private double underloadThreshold = 0;
-
-    // Brokers above this threshold are considered to be at risk for becoming overloaded
-    private double highLoadThreshold = 10000;
-
-    // Brokers above this threshold are considered to be overloaded
-    private double overloadThreshold = 15000;
-
     // How often in seconds to update the broker data
     private long brokerDataUpdateIntervalSeconds = 60;
 
@@ -1018,30 +1009,6 @@ public class ServiceConfiguration implements PulsarConfiguration {
 
     public void setNumLongSamples(int numLongSamples) {
         this.numLongSamples = numLongSamples;
-    }
-
-    public double getUnderloadThreshold() {
-        return underloadThreshold;
-    }
-
-    public void setUnderloadThreshold(double underloadThreshold) {
-        this.underloadThreshold = underloadThreshold;
-    }
-
-    public double getHighLoadThreshold() {
-        return highLoadThreshold;
-    }
-
-    public void setHighLoadThreshold(double highLoadThreshold) {
-        this.highLoadThreshold = highLoadThreshold;
-    }
-
-    public double getOverloadThreshold() {
-        return overloadThreshold;
-    }
-
-    public void setOverloadThreshold(double overloadThreshold) {
-        this.overloadThreshold = overloadThreshold;
     }
 
     public long getBrokerDataUpdateIntervalSeconds() {
