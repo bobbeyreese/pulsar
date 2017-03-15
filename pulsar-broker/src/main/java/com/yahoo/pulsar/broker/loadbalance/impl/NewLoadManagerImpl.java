@@ -26,6 +26,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 
 public class NewLoadManagerImpl implements NewLoadManager, ZooKeeperCacheListener<LocalBrokerData> {
+    public static final String LOADBALANCE_BROKERS_ROOT = "/loadbalance/new-brokers";
     public static final String TIME_AVERAGE_BROKER_ZPATH = "/loadbalance/broker-time-average";
     public static final String BUNDLE_DATA_ZPATH = "/loadbalance/bundle-data";
 
@@ -66,15 +67,22 @@ public class NewLoadManagerImpl implements NewLoadManager, ZooKeeperCacheListene
     private long lastBundleDataUpdate;
 
     private String brokerZnodePath;
+    private final String brokerRoot;
 
     // System resource usage directly after starting.
     private SystemResourceUsage baselineSystemResourceUsage;
 
-    /**
-     *
-     * @param pulsar Client to construct this manager from.
-     */
     public NewLoadManagerImpl(final PulsarService pulsar) {
+        this(pulsar, LOADBALANCE_BROKERS_ROOT);
+    }
+
+    /**
+     * Initialize this load manager.
+     * @param pulsar Client to construct this manager from.
+     * @param brokerRoot ZooKeeper path containing some data implementing ServiceLookup.
+     */
+    public NewLoadManagerImpl(final PulsarService pulsar, final String brokerRoot) {
+        this.brokerRoot = brokerRoot;
         this.pulsar = pulsar;
         zkClient = pulsar.getZkClient();
         conf = pulsar.getConfiguration();
@@ -107,8 +115,7 @@ public class NewLoadManagerImpl implements NewLoadManager, ZooKeeperCacheListene
             }
         };
         brokerDataCache.registerListener(this);
-        availableActiveBrokers = new ZooKeeperChildrenCache(pulsar.getLocalZkCache(),
-                SimpleLoadManagerImpl.LOADBALANCE_BROKERS_ROOT);
+        availableActiveBrokers = new ZooKeeperChildrenCache(pulsar.getLocalZkCache(), brokerRoot);
         availableActiveBrokers.registerListener(new ZooKeeperCacheListener<Set<String>>() {
             @Override
             public void onUpdate(String path, Set<String> data, Stat stat) {
@@ -131,7 +138,7 @@ public class NewLoadManagerImpl implements NewLoadManager, ZooKeeperCacheListene
             final Map<String, BrokerData> brokerDataMap = loadData.getBrokerData();
             for (String broker: activeBrokers) {
                 try {
-                    String key = String.format("%s/%s", SimpleLoadManagerImpl.LOADBALANCE_BROKERS_ROOT, broker);
+                    String key = String.format("%s/%s", brokerRoot, broker);
                     final LocalBrokerData localData = brokerDataCache.get(key)
                             .orElseThrow(KeeperException.NoNodeException::new);
 
@@ -156,6 +163,14 @@ public class NewLoadManagerImpl implements NewLoadManager, ZooKeeperCacheListene
      */
     private Map<String, NamespaceBundleStats> getBundleStats() {
         return pulsar.getBrokerService().getBundleStats();
+    }
+
+    /**
+     * Update both the broker data and the bundle data.
+     */
+    public void updateAll() {
+        updateAllBrokerData();
+        updateBundleData();
     }
 
     /**
@@ -317,12 +332,17 @@ public class NewLoadManagerImpl implements NewLoadManager, ZooKeeperCacheListene
         // TODO?
     }
 
+    @Override
+    public String getBrokerRoot() {
+        return brokerRoot;
+    }
+
     /**
      * When the broker data ZooKeeper nodes are updated, update the broker data map.
      */
     @Override
     public void onUpdate(final String path, final LocalBrokerData data, final Stat stat) {
-        scheduler.submit(this::updateAllBrokerData);
+        scheduler.submit(this::updateAll);
     }
 
     /**
@@ -332,7 +352,7 @@ public class NewLoadManagerImpl implements NewLoadManager, ZooKeeperCacheListene
      */
     @Override
     public synchronized String selectBrokerForAssignment(final String bundle) {
-        // ?: Is it too inefficient to make this synchronized? If not, it may be a good idea to use weighted random
+        // ?: Is it too inefficient to make this synchronized? If so, it may be a good idea to use weighted random
         // or atomic data.
         if (preallocatedBundleToBroker.containsKey(bundle)) {
             // If the given bundle is already in preallocated, return the selected broker.
@@ -362,10 +382,10 @@ public class NewLoadManagerImpl implements NewLoadManager, ZooKeeperCacheListene
     public void start() throws PulsarServerException {
         try {
             // Register the brokers in zk list
-            createZPathIfNotExists(zkClient, SimpleLoadManagerImpl.LOADBALANCE_BROKERS_ROOT);
+            createZPathIfNotExists(zkClient, brokerRoot);
 
             String lookupServiceAddress = pulsar.getAdvertisedAddress() + ":" + conf.getWebServicePort();
-            brokerZnodePath = SimpleLoadManagerImpl.LOADBALANCE_BROKERS_ROOT + "/" + lookupServiceAddress;
+            brokerZnodePath = brokerRoot + "/" + lookupServiceAddress;
             final String timeAverageZPath = TIME_AVERAGE_BROKER_ZPATH + "/" + lookupServiceAddress;
             updateLocalBrokerData();
             try {
@@ -378,7 +398,7 @@ public class NewLoadManagerImpl implements NewLoadManager, ZooKeeperCacheListene
             }
             createZPathIfNotExists(zkClient, timeAverageZPath);
             zkClient.setData(timeAverageZPath, (new TimeAverageBrokerData()).getJsonBytes(), -1);
-            updateAllBrokerData();
+            updateAll();
             lastBundleDataUpdate = System.currentTimeMillis();
             baselineSystemResourceUsage = getSystemResourceUsage();
         } catch (Exception e) {

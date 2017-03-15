@@ -43,6 +43,11 @@ public class NewLoadManagerWrapper implements LoadManager {
     }
 
     @Override
+    public String getBrokerRoot() {
+        return loadManager.getBrokerRoot();
+    }
+
+    @Override
     public ResourceUnit getLeastLoaded(final ServiceUnitId serviceUnit) {
         return new SimpleResourceUnit(String.format("http://%s",
                 loadManager.selectBrokerForAssignment(serviceUnit.toString())),

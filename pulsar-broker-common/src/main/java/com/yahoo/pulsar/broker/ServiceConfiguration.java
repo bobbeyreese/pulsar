@@ -981,6 +981,9 @@ public class ServiceConfiguration implements PulsarConfiguration {
     // Name of load manager to use
     private String loadManagerName = "SimpleLoadManager";
 
+    // Name of placement strategy to use for new loadbalancer API.
+    private String newPlacementStrategyName = "LeastLongTermMessageRate";
+
     public int getNumShortSamples() {
         return numShortSamples;
     }
@@ -1075,5 +1078,13 @@ public class ServiceConfiguration implements PulsarConfiguration {
 
     public void setLoadManagerName(String loadManagerName) {
         this.loadManagerName = loadManagerName;
+    }
+
+    public String getNewPlacementStrategyName() {
+        return newPlacementStrategyName;
+    }
+
+    public void setNewPlacementStrategyName(String newPlacementStrategyName) {
+        this.newPlacementStrategyName = newPlacementStrategyName;
     }
 }

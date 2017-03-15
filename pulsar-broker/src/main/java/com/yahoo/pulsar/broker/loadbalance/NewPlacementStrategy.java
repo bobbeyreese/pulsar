@@ -29,7 +29,7 @@ public interface NewPlacementStrategy {
      * @return A placement strategy from the given configurations.
      */
     static NewPlacementStrategy create(final ServiceConfiguration conf) {
-        switch (conf.getLoadBalancerPlacementStrategy()) {
+        switch (conf.getNewPlacementStrategyName()) {
             case "LeastLongTermMessageRate":
             default:
                 return new LeastLongTermMessageRate();

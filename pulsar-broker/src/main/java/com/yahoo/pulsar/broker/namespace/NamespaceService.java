@@ -31,6 +31,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -94,7 +95,7 @@ public class NamespaceService {
 
     private final ServiceConfiguration config;
 
-    private final LoadManager loadManager;
+    private final AtomicReference<LoadManager> loadManager;
 
     private final PulsarService pulsar;
 
@@ -331,7 +332,7 @@ public class NamespaceService {
             }
 
             if (candidateBroker == null) {
-                if (!this.loadManager.isCentralized() || pulsar.getLeaderElectionService().isLeader()) {
+                if (!this.loadManager.get().isCentralized() || pulsar.getLeaderElectionService().isLeader()) {
                     candidateBroker = getLeastLoadedFromLoadManager(bundle);
                 } else {
                     if (authoritative) {
@@ -404,7 +405,7 @@ public class NamespaceService {
         try {
             checkArgument(StringUtils.isNotBlank(candidateBroker), "Lookup broker can't be null " + candidateBroker);
             URI uri = new URI(candidateBroker);
-            String path = String.format("%s/%s:%s", SimpleLoadManagerImpl.LOADBALANCE_BROKERS_ROOT, uri.getHost(),
+            String path = String.format("%s/%s:%s", loadManager.get().getBrokerRoot(), uri.getHost(),
                     uri.getPort());
             pulsar.getLocalZkCache().getDataAsync(path, serviceLookupDataDeserializer).thenAccept(reportData -> {
                 if (reportData.isPresent()) {
@@ -426,8 +427,7 @@ public class NamespaceService {
     }
 
     private boolean isBrokerActive(String candidateBroker) throws KeeperException, InterruptedException {
-        Set<String> activeNativeBrokers = pulsar.getLocalZkCache()
-                .getChildren(SimpleLoadManagerImpl.LOADBALANCE_BROKERS_ROOT);
+        Set<String> activeNativeBrokers = pulsar.getLocalZkCache().getChildren(loadManager.get().getBrokerRoot());
 
         for (String brokerHostPort : activeNativeBrokers) {
             if (candidateBroker.equals("http://" + brokerHostPort)) {
@@ -448,13 +448,11 @@ public class NamespaceService {
     /**
      * Helper function to encapsulate the logic to invoke between old and new load manager
      *
-     * @param namespaceName
-     * @param decidedByLeader
      * @return
      * @throws Exception
      */
     private String getLeastLoadedFromLoadManager(ServiceUnitId serviceUnit) throws Exception {
-        String lookupAddress = loadManager.getLeastLoaded(serviceUnit).getResourceId();
+        String lookupAddress = loadManager.get().getLeastLoaded(serviceUnit).getResourceId();
         if (LOG.isDebugEnabled()) {
             LOG.debug("{} : redirecting to the least loaded broker, lookup address={}", pulsar.getWebServiceAddress(),
                     lookupAddress);
@@ -568,7 +566,7 @@ public class NamespaceService {
                                     bundleFactory.invalidateBundleCache(nsname);
                                     // update bundled_topic cache for load-report-generation
                                     pulsar.getBrokerService().refreshTopicToStatsMaps(bundle);
-                                    loadManager.setLoadReportForceUpdateFlag();
+                                    loadManager.get().setLoadReportForceUpdateFlag();
                                     future.complete(null);
                                 } catch (Exception e) {
                                     String msg1 = format(

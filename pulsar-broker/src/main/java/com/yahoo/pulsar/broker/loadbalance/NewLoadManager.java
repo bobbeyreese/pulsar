@@ -26,6 +26,11 @@ public interface NewLoadManager {
     void doNamespaceBundleSplit();
 
     /**
+     * Get the broker root ZooKeeper path.
+     */
+    String getBrokerRoot();
+
+    /**
      * As the leader broker, find a suitable broker for the assignment of the given bundle.
      * @param bundleToAssign Full name of the bundle to assign.
      * @return The name of the selected broker, as it appears on ZooKeeper.

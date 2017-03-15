@@ -19,8 +19,7 @@ import java.util.HashSet;
 import java.util.Set;
 
 public class NewBrokerMonitor {
-    private ServerSocket socket;
-    private static final String BROKER_ROOT = "/loadbalance/brokers";
+    private static final String BROKER_ROOT = "/loadbalance/new-brokers";
     private static final int ZOOKEEPER_TIMEOUT_MILLIS = 5000;
     private final ZooKeeper zkClient;
     private static final Gson gson = new Gson();
@@ -161,9 +160,6 @@ public class NewBrokerMonitor {
     }
 
     static class Arguments {
-        @Parameter(names = {"--listen-port"}, description = "Port to listen on", required = true)
-        public int listenPort = 0;
-
         @Parameter(names = {"--connect-string"}, description = "Zookeeper connect string", required = true)
         public String connectString = null;
     }
@@ -172,48 +168,8 @@ public class NewBrokerMonitor {
         this.zkClient = zkClient;
     }
 
-    private static double percentUsage(final double usage, final double limit) {
-        return limit > 0  && usage >= 0 ? 100 * Math.min(1, usage / limit): 0;
-    }
-
-    private void listen(final int listenPort) throws Exception {
-        socket = new ServerSocket(listenPort);
-        final ServerSocket localSocketReference = socket;
-        new Thread(() -> {
-            try {
-                while (true) {
-                    final Socket clientSocket = localSocketReference.accept();
-                    System.out.println(String.format("Accepted connection from %s",
-                            clientSocket.getInetAddress().getHostName()));
-                    final BufferedReader reader = new BufferedReader(new InputStreamReader(clientSocket.getInputStream()));
-                    new Thread(() -> {
-                        try {
-                            while (true) {
-                                final String line = reader.readLine();
-                                if (!(line == null || line.isEmpty())) {
-                                    System.out.println(line);
-                                }
-                            }
-                        } catch (Exception ex) {
-                            throw new RuntimeException(ex);
-                        }
-                    }).start();
-                }
-            } catch (Exception ex) {
-                throw new RuntimeException(ex);
-            } finally {
-                try {
-                    socket.close();
-                } catch (Exception ex) {
-                    throw new RuntimeException(ex);
-                }
-            }
-        }).start();
-    }
-
-    private void start(final int listenPort) {
+    private void start() {
         try {
-            listen(listenPort);
             final BrokerWatcher brokerWatcher = new BrokerWatcher(zkClient);
             brokerWatcher.updateBrokers(BROKER_ROOT);
             while (true) {}
@@ -229,7 +185,7 @@ public class NewBrokerMonitor {
             jc.parse(args);
             final ZooKeeper zkClient = new ZooKeeper(arguments.connectString, ZOOKEEPER_TIMEOUT_MILLIS, null);
             final NewBrokerMonitor monitor = new NewBrokerMonitor(zkClient);
-            monitor.start(arguments.listenPort);
+            monitor.start();
         } catch (Exception ex) {
             throw new RuntimeException(ex);
         }
