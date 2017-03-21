@@ -122,7 +122,7 @@ public class NewLoadManagerImpl implements NewLoadManager, ZooKeeperCacheListene
                 if (log.isDebugEnabled()) {
                     log.debug("Update Received for path {}", path);
                 }
-                scheduler.submit(NewLoadManagerImpl.this::updateAllBrokerData);
+                scheduler.submit(NewLoadManagerImpl.this::updateAll);
             }
         });
         scheduler = Executors.newScheduledThreadPool(1);

@@ -260,6 +260,9 @@ public class PulsarService implements AutoCloseable {
             this.brokerService = new BrokerService(this);
 
             // Start load management service (even if load balancing is disabled)
+            if (getZkClient().exists(DYNAMIC_LOAD_MANAGER_ZPATH, false) != null) {
+                config.setLoadManagerName(new String(getZkClient().getData(DYNAMIC_LOAD_MANAGER_ZPATH, false, null)));
+            }
             this.loadManager = new AtomicReference<>(LoadManager.create(config, this));
 
             this.startLoadManagementService();

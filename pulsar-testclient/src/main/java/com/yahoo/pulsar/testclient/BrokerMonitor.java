@@ -32,7 +32,7 @@ public class BrokerMonitor {
 
         public BrokerWatcher(final ZooKeeper zkClient) {
             this.zkClient = zkClient;
-            this.brokers = Collections.EMPTY_SET;
+            this.brokers = Collections.emptySet();
         }
 
         public synchronized void process(final WatchedEvent event) {

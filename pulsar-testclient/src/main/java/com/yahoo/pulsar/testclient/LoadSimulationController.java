@@ -3,13 +3,18 @@ package com.yahoo.pulsar.testclient;
 import com.beust.jcommander.JCommander;
 import com.beust.jcommander.Parameter;
 import com.beust.jcommander.ParameterException;
+import com.yahoo.pulsar.broker.BundleData;
+import com.yahoo.pulsar.common.policies.data.ResourceQuota;
+import com.yahoo.pulsar.common.policies.data.loadbalancer.LoadReport;
+import com.yahoo.pulsar.common.policies.data.loadbalancer.NamespaceBundleStats;
+import com.yahoo.pulsar.common.util.ObjectMapperFactory;
+import org.apache.bookkeeper.util.ZkUtils;
+import org.apache.zookeeper.*;
 
 import java.io.*;
 import java.net.Socket;
-import java.nio.file.Files;
 import java.nio.file.Paths;
-import java.util.List;
-import java.util.Random;
+import java.util.*;
 
 /**
  * To use:
@@ -30,13 +35,26 @@ import java.util.Random;
  *
  */
 public class LoadSimulationController {
+    private final static String QUOTA_ROOT = "/loadbalance/resource-quota/namespace";
+
+    // Input streams for each server to send commands through.
     private final DataInputStream[] inputStreams;
+
+    // Output streams for each server to receive information from.
     private final DataOutputStream[] outputStreams;
+
+    // Server host names.
     private final String[] servers;
+
+    // Port servers are listening on.
     private final int serverPort;
+
+    // The ZooKeeper cluster to run on.
     private final String cluster;
+
     private final Random random;
 
+    // JCommander arguments for starting a controller via main.
     private static class MainArguments {
         @Parameter(names = {"--cluster"}, description = "Cluster to test on", required = true)
         String cluster;
@@ -48,6 +66,7 @@ public class LoadSimulationController {
         int serverPort;
     }
 
+    // JCommander arguments for accepting user input.
     private static class ShellArguments {
         @Parameter(description = "Command arguments:\n" +
                 "trade tenant namespace topic\n" +
@@ -65,6 +84,9 @@ public class LoadSimulationController {
         @Parameter(names = {"--rate"}, description = "Messages per second")
         double rate = 1;
 
+        @Parameter(names = {"--rate-multiplier"}, description = "Multiplier to use for copying or streaming rates")
+        double rateMultiplier = 1;
+
         @Parameter(names = {"--size"}, description = "Message size in bytes")
         int size = 1024;
 
@@ -77,6 +99,80 @@ public class LoadSimulationController {
         int topicsPerNamespace = 1;
     }
 
+    // In stream mode, the BrokerWatcher watches the /loadbalance/broker zpath and adds LoadReportWatchers
+    // accordingly when new brokers come up.
+    private class BrokerWatcher implements Watcher {
+        private final ZooKeeper zkClient;
+        private final Set<String> brokers;
+        private final String path;
+
+        public BrokerWatcher(final String path, final ZooKeeper zkClient) {
+            this.path = path;
+            this.zkClient = zkClient;
+            brokers = new HashSet<>();
+            process(null);
+        }
+
+        public synchronized void process(final WatchedEvent event) {
+            try {
+                final List<String> currentBrokers = zkClient.getChildren(path, this);
+                for (final String broker: currentBrokers) {
+                    if (!brokers.contains(broker)) {
+                        new LoadReportWatcher(String.format("%s/%s", path, broker), zkClient);
+                        brokers.add(broker);
+                    }
+                }
+            } catch (Exception ex) {
+                throw new RuntimeException(ex);
+            }
+        }
+    }
+
+    // In stream mode, the LoadReportWatcher watches the /loadbalance/broker children and adds or modifies topics
+    // with suitable rates based on the most recent message rate and throughput information.
+    private class LoadReportWatcher implements Watcher {
+        private final ZooKeeper zkClient;
+        private final String path;
+
+        public LoadReportWatcher(final String path, final ZooKeeper zkClient) {
+            this.path = path;
+            this.zkClient = zkClient;
+            // Get initial topics and set this up as a watch by calling process.
+            process(null);
+        }
+
+        public synchronized void process(final WatchedEvent event) {
+            try {
+                // Get the load report and put this back as a watch.
+                final LoadReport loadReport = ObjectMapperFactory.getThreadLocal()
+                        .readValue(zkClient.getData(path, this, null), LoadReport.class);
+                for (final Map.Entry<String, NamespaceBundleStats> entry: loadReport.getBundleStats().entrySet()) {
+                    final String bundle = entry.getKey();
+                    final String namespace = bundle.substring(0, bundle.lastIndexOf('/'));
+                    final String destination = String.format("%s/%s", namespace, "t");
+                    final NamespaceBundleStats stats = entry.getValue();
+                    final double messageRate = stats.msgRateIn + stats.msgRateOut;
+                    // size = throughput / rate.
+                    final int messageSize = (int)
+                            Math.ceil((stats.msgThroughputIn + stats.msgThroughputOut) / messageRate);
+                    final ShellArguments arguments = new ShellArguments();
+                    arguments.rate = messageRate;
+                    arguments.size = messageSize;
+                    // Try to modify the topic if it already exists. Otherwise, create it.
+                    if (!change(arguments, destination)) {
+                        trade(arguments, destination);
+                    }
+                }
+            } catch (Exception ex) {
+                throw new RuntimeException(ex);
+            }
+        }
+    }
+
+    /**
+     * Create a LoadSimulationController with the given JCommander arguments.
+     * @param arguments Arguments to create from.
+     */
     public LoadSimulationController(final MainArguments arguments) throws Exception {
         random = new Random();
         serverPort = arguments.serverPort;
@@ -94,6 +190,7 @@ public class LoadSimulationController {
         }
     }
 
+    // Check that the expected number of application arguments matches the actual number of application arguments.
     private boolean checkAppArgs(final int numAppArgs, final int numRequired) {
         if (numAppArgs != numRequired) {
             System.out.format("ERROR: Wrong number of application arguments (found %d, required %d)\n",
@@ -103,14 +200,18 @@ public class LoadSimulationController {
         return true;
     }
 
+    // Makes a destination string from a tenant name, namespace name, and topic name.
     private String makeDestination(final String tenant, final String namespace, final String topic) {
         return String.format("persistent://%s/%s/%s/%s", cluster, tenant, namespace, topic);
     }
 
+    // Write options that are common to modifying and creating topics.
     private void writeProducerOptions(final DataOutputStream outputStream, final ShellArguments arguments,
                                       final String destination)
             throws Exception {
         if (!arguments.rangeString.isEmpty()) {
+            // If --rand-rate was specified, extract the bounds by splitting on the comma and parsing the resulting
+            // doubles.
             final String[] splits = arguments.rangeString.split(",");
             if (splits.length != 2) {
                 System.out.println("ERROR: Argument to --rand-rate should be a two comma-separated values");
@@ -127,7 +228,9 @@ public class LoadSimulationController {
         outputStream.writeDouble(arguments.rate);
     }
 
-    private void trade(final ShellArguments arguments, final String destination) throws Exception {
+    // Trade using the arguments parsed via JCommander and the destination name.
+    private synchronized void trade(final ShellArguments arguments, final String destination) throws Exception {
+        // Decide which server to send to randomly to preserve statelessness of the controller.
         final int i = random.nextInt(servers.length);
         System.out.println("Sending trade request to " + servers[i]);
         outputStreams[i].write(LoadSimulationServer.TRADE_COMMAND);
@@ -142,6 +245,7 @@ public class LoadSimulationController {
 
     private void handleTrade(final ShellArguments arguments) throws Exception {
         final List<String> commandArguments = arguments.commandArguments;
+        // Trade expects three application arguments: tenant, namespace, and topic.
         if (checkAppArgs(commandArguments.size() - 1, 3)) {
             final String destination = makeDestination(commandArguments.get(1), commandArguments.get(2),
                     commandArguments.get(3));
@@ -149,35 +253,42 @@ public class LoadSimulationController {
         }
     }
 
+    // Change producer settings for a given destination and JCommander arguments.
+    // Returns true if the topic was found and false otherwise.
+    private synchronized boolean change(final ShellArguments arguments, final String destination) throws Exception {
+        System.out.println("Searching for server with topic " + destination);
+        for (DataOutputStream outputStream : outputStreams) {
+            outputStream.write(LoadSimulationServer.CHANGE_COMMAND);
+            writeProducerOptions(outputStream, arguments, destination);
+            outputStream.flush();
+        }
+        boolean foundTopic = false;
+        for (int i = 0; i < servers.length; ++i) {
+            int readValue;
+            switch (readValue = inputStreams[i].read()) {
+                case LoadSimulationServer.FOUND_TOPIC:
+                    System.out.format("Found topic %s on server %s\n", destination, servers[i]);
+                    foundTopic = true;
+                    break;
+                case LoadSimulationServer.NO_SUCH_TOPIC:
+                    break;
+                case -1:
+                    System.out.format("ERROR: Socket to %s closed\n", servers[i]);
+                    break;
+                default:
+                    System.out.println("ERROR: Unknown response signal received: " + readValue);
+            }
+        }
+        return foundTopic;
+    }
+
     private void handleChange(final ShellArguments arguments) throws Exception {
         final List<String> commandArguments = arguments.commandArguments;
+        // Change expects three application arguments: tenant name, namespace name, and topic name.
         if (checkAppArgs(commandArguments.size() - 1, 3)) {
             final String destination = makeDestination(commandArguments.get(1), commandArguments.get(2),
                     commandArguments.get(3));
-            System.out.println("Searching for server with topic " + destination);
-            for (DataOutputStream outputStream : outputStreams) {
-                outputStream.write(LoadSimulationServer.CHANGE_COMMAND);
-                writeProducerOptions(outputStream, arguments, destination);
-                outputStream.flush();
-            }
-            boolean foundTopic = false;
-            for (int i = 0; i < servers.length; ++i) {
-                int readValue;
-                switch (readValue = inputStreams[i].read()) {
-                    case LoadSimulationServer.FOUND_TOPIC:
-                        System.out.format("Found topic %s on server %s\n", destination, servers[i]);
-                        foundTopic = true;
-                        break;
-                    case LoadSimulationServer.NO_SUCH_TOPIC:
-                        break;
-                    case -1:
-                        System.out.format("ERROR: Socket to %s closed\n", servers[i]);
-                        break;
-                    default:
-                        System.out.println("ERROR: Unknown response signal received: " + readValue);
-                }
-            }
-            if (!foundTopic) {
+            if (!change(arguments, destination)) {
                 System.out.format("ERROR: Topic %s not found\n", destination);
             }
         }
@@ -185,6 +296,7 @@ public class LoadSimulationController {
 
     private void handleStop(final ShellArguments arguments) throws Exception {
         final List<String> commandArguments = arguments.commandArguments;
+        // Stop expects three application arguments: tenant name, namespace name, and topic name.
         if (checkAppArgs(commandArguments.size() - 1, 3)) {
             final String destination = makeDestination(commandArguments.get(1), commandArguments.get(2),
                     commandArguments.get(3));
@@ -223,13 +335,17 @@ public class LoadSimulationController {
 
     private void handleGroupTrade(final ShellArguments arguments) throws Exception {
         final List<String> commandArguments = arguments.commandArguments;
+        // Group trade expects 3 application arguments: tenant name, group name, and number of namespaces.
         if (checkAppArgs(commandArguments.size() - 1, 3)) {
             final String tenant = commandArguments.get(1);
             final String group = commandArguments.get(2);
             final int numNamespaces = Integer.parseInt(commandArguments.get(3));
             for (int i = 0; i < numNamespaces; ++i) {
                 for (int j = 0; j < arguments.topicsPerNamespace; ++j) {
-                    final String destination = makeDestination(tenant, String.format("%s-%s", group, i), Integer.toString(j));
+                    // For each namespace and topic pair, create the namespace by using the group name and the
+                    // namespace index, and then create the topic by using the topic index. Then just call trade.
+                    final String destination = makeDestination(tenant, String.format("%s-%d", group, i),
+                            Integer.toString(j));
                     trade(arguments, destination);
                     Thread.sleep(arguments.separation);
                 }
@@ -239,6 +355,7 @@ public class LoadSimulationController {
 
     private void handleGroupChange(final ShellArguments arguments) throws Exception {
         final List<String> commandArguments = arguments.commandArguments;
+        // Group change expects two application arguments: tenant name and group name.
         if (checkAppArgs(commandArguments.size() - 1, 2)) {
             final String tenant = commandArguments.get(1);
             final String group = commandArguments.get(2);
@@ -254,6 +371,7 @@ public class LoadSimulationController {
         }
     }
 
+    // Report the number of topics found belonging to the given tenant and group.
     private void accumulateAndReport(final String tenant, final String group) throws Exception {
         int numFound = 0;
         for (int i = 0; i < servers.length; ++i) {
@@ -281,6 +399,7 @@ public class LoadSimulationController {
 
     private void handleGroupStop(final ShellArguments arguments) throws Exception {
         final List<String> commandArguments = arguments.commandArguments;
+        // Group stop requires two application arguments: tenant name and group name.
         if (checkAppArgs(commandArguments.size() - 1, 2)) {
             final String tenant = commandArguments.get(1);
             final String group = commandArguments.get(2);
@@ -294,7 +413,104 @@ public class LoadSimulationController {
         }
     }
 
-    public void read(final String[] args) throws Exception {
+    // Recursively acquire all resource quotas by getting the ZK children of the given path and calling this function
+    // on the children if there are any, or getting the data from this ZNode otherwise.
+    private void getResourceQuotas(final String path, final ZooKeeper zkClient,
+                                   final Map<String, ResourceQuota> bundleToQuota) throws Exception {
+        final List<String> children = zkClient.getChildren(path, false);
+        if (children.isEmpty()) {
+            bundleToQuota.put(path, ObjectMapperFactory.getThreadLocal().readValue(zkClient.getData(path, false, null),
+                    ResourceQuota.class));
+        } else {
+            for (final String child: children) {
+                getResourceQuotas(String.format("%s/%s", path, child), zkClient, bundleToQuota);
+            }
+        }
+    }
+
+    private void handleStream(final ShellArguments arguments) throws Exception {
+        final List<String> commandArguments = arguments.commandArguments;
+        // Stream accepts 1 application argument: ZooKeeper connect string.
+        if (checkAppArgs(commandArguments.size() - 1, 1)) {
+            final String zkConnectString = commandArguments.get(1);
+            final ZooKeeper zkClient = new ZooKeeper(zkConnectString, 5000, null);
+            new BrokerWatcher("/loadbalance/brokers", zkClient);
+            while (true);
+        }
+    }
+
+    private void handleCopy(final ShellArguments arguments) throws Exception {
+        final List<String> commandArguments = arguments.commandArguments;
+        // Copy accepts 3 application arguments: Tenant name, source ZooKeeper and target ZooKeeper connect strings.
+        if (checkAppArgs(commandArguments.size() - 1, 3)) {
+            final String tenantName = commandArguments.get(1);
+            final String sourceZKConnectString = commandArguments.get(2);
+            final String targetZKConnectString = commandArguments.get(3);
+            final ZooKeeper sourceZKClient = new ZooKeeper(sourceZKConnectString, 5000, null);
+            final ZooKeeper targetZKClient = new ZooKeeper(targetZKConnectString, 5000, null);
+            final Map<String, ResourceQuota> bundleToQuota = new HashMap<>();
+            getResourceQuotas(QUOTA_ROOT, sourceZKClient, bundleToQuota);
+            for (final Map.Entry<String, ResourceQuota> entry: bundleToQuota.entrySet()) {
+                final String bundle = entry.getKey();
+                final ResourceQuota quota = entry.getValue();
+                // Simulation will send messages in and out at about the same rate, so just make the rate the average
+                // of in and out.
+                final double messageRate = (quota.getMsgRateIn() + quota.getMsgRateOut()) / 2;
+                final int messageSize = (int)
+                        Math.ceil((quota.getBandwidthIn() + quota.getBandwidthOut()) / messageRate);
+                final int clusterStart = QUOTA_ROOT.length() + 1;
+                final int tenantStart = bundle.indexOf('/', clusterStart) + 1;
+                final String sourceCluster = bundle.substring(clusterStart, tenantStart - 1);
+                final int namespaceStart = bundle.indexOf('/', tenantStart) + 1;
+                final String sourceTenant = bundle.substring(tenantStart, namespaceStart - 1);
+                final String namespace = bundle.substring(namespaceStart, bundle.lastIndexOf('/'));
+                final String keyRangeString = bundle.substring(bundle.lastIndexOf('/') + 1);
+                // To prevent duplicate node issues for same namespace names in different clusters/tenants.
+                final String manglePrefix = String.format("%s-%s-%s", sourceCluster, sourceTenant, keyRangeString);
+                final String mangledNamespace = String.format("%s-%s", manglePrefix, namespace);
+                arguments.rate = messageRate * arguments.rateMultiplier;
+                arguments.size = messageSize;
+                final NamespaceBundleStats startingStats = new NamespaceBundleStats();
+
+                // Modify the original quota so that new rates are set.
+                quota.setMsgRateIn(quota.getMsgRateIn() * arguments.rateMultiplier);
+                quota.setMsgRateOut(quota.getMsgRateOut() * arguments.rateMultiplier);
+                quota.setBandwidthIn(quota.getBandwidthIn() * arguments.rateMultiplier);
+                quota.setBandwidthOut(quota.getBandwidthOut() * arguments.rateMultiplier);
+
+                // Assume modified memory usage is comparable to the rate multiplier times the original usage.
+                quota.setMemory(quota.getMemory() * arguments.rateMultiplier);
+                startingStats.msgRateIn = quota.getMsgRateIn();
+                startingStats.msgRateOut = quota.getMsgRateOut();
+                startingStats.msgThroughputIn = quota.getBandwidthIn();
+                startingStats.msgThroughputOut = quota.getBandwidthOut();
+                final BundleData bundleData = new BundleData(10, 1000, startingStats);
+                // Assume there is ample history for topic.
+                bundleData.getLongTermData().setNumSamples(1000);
+                bundleData.getShortTermData().setNumSamples(1000);
+                final String oldAPITargetPath =
+                        String.format("/loadbalance/resource-quota/namespace/%s/%s/%s/0x00000000_0xffffffff",
+                                cluster, tenantName, mangledNamespace);
+                final String newAPITargetPath =
+                        String.format("/loadbalance/bundle-data/%s/%s/%s/0x00000000_0xffffffff", cluster, tenantName,
+                                mangledNamespace);
+                System.out.format("Copying %s to %s\n", bundle, oldAPITargetPath);
+                ZkUtils.createFullPathOptimistic(targetZKClient, oldAPITargetPath,
+                        ObjectMapperFactory.getThreadLocal().writeValueAsBytes(quota), ZooDefs.Ids.OPEN_ACL_UNSAFE,
+                        CreateMode.PERSISTENT);
+                System.out.format("Creating new API data at %s\n", newAPITargetPath);
+                // Put the quota in the new ZooKeeper.
+                ZkUtils.createFullPathOptimistic(targetZKClient, newAPITargetPath, bundleData.getJsonBytes(),
+                        ZooDefs.Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT);
+                trade(arguments, makeDestination(tenantName, mangledNamespace, "t"));
+            }
+            sourceZKClient.close();
+            targetZKClient.close();
+        }
+    }
+
+    public void read(final String[] args) {
+        // Don't attempt to process blank input.
         if (args.length > 0 && !(args.length == 1 && args[0].isEmpty())) {
             final ShellArguments arguments = new ShellArguments();
             final JCommander jc = new JCommander(arguments);
@@ -321,6 +537,7 @@ public class LoadSimulationController {
                         handleGroupStop(arguments);
                         break;
                     case "script":
+                        // Read input from the given script instead of stdin until the script has executed completely.
                         final List<String> commandArguments = arguments.commandArguments;
                         checkAppArgs(commandArguments.size() - 1, 1);
                         final String scriptName = commandArguments.get(1);
@@ -332,6 +549,12 @@ public class LoadSimulationController {
                             line = scriptReader.readLine();
                         }
                         scriptReader.close();
+                        break;
+                    case "copy":
+                        handleCopy(arguments);
+                        break;
+                    case "stream":
+                        handleStream(arguments);
                         break;
                     case "quit":
                     case "exit":
@@ -352,6 +575,7 @@ public class LoadSimulationController {
     public void run() throws Exception {
         BufferedReader inReader = new BufferedReader(new InputStreamReader(System.in));
         while (true) {
+            // Print the very simple prompt.
             System.out.println();
             System.out.print("> ");
             read(inReader.readLine().split("\\s+"));
