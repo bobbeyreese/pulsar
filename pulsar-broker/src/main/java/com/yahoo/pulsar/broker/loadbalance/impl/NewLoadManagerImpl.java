@@ -1,7 +1,9 @@
 package com.yahoo.pulsar.broker.loadbalance.impl;
 
+import com.google.common.cache.*;
 import com.yahoo.pulsar.broker.*;
 import com.yahoo.pulsar.broker.loadbalance.*;
+import com.yahoo.pulsar.client.admin.PulsarAdmin;
 import com.yahoo.pulsar.common.policies.data.loadbalancer.NamespaceBundleStats;
 import com.yahoo.pulsar.common.policies.data.loadbalancer.SystemResourceUsage;
 import com.yahoo.pulsar.common.util.ObjectMapperFactory;
@@ -20,10 +22,14 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
+import java.net.URL;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
+
+import static com.google.common.base.Preconditions.checkArgument;
 
 public class NewLoadManagerImpl implements NewLoadManager, ZooKeeperCacheListener<LocalBrokerData> {
     public static final String LOADBALANCE_BROKERS_ROOT = "/loadbalance/new-brokers";
@@ -58,6 +64,7 @@ public class NewLoadManagerImpl implements NewLoadManager, ZooKeeperCacheListene
     private final ZooKeeperDataCache<LocalBrokerData> brokerDataCache;
     private final ZooKeeperChildrenCache availableActiveBrokers;
     private final ScheduledExecutorService scheduler;
+    private final LoadingCache<String, PulsarAdmin> adminCache;
 
     // The default bundle stats which are used to initialize historic data.
     // This data is overriden after the bundle receives its first sample.
@@ -95,6 +102,19 @@ public class NewLoadManagerImpl implements NewLoadManager, ZooKeeperCacheListene
         localData = new LocalBrokerData(pulsar.getWebServiceAddress(), pulsar.getWebServiceAddressTls(),
                 pulsar.getBrokerServiceUrl(), pulsar.getBrokerServiceUrlTls());
         placementStrategy = NewPlacementStrategy.create(conf);
+        adminCache = CacheBuilder.newBuilder().removalListener(new RemovalListener<String, PulsarAdmin>() {
+            public void onRemoval(RemovalNotification<String, PulsarAdmin> removal) {
+                removal.getValue().close();
+            }
+        }).expireAfterAccess(1, TimeUnit.DAYS).build(new CacheLoader<String, PulsarAdmin>() {
+            @Override
+            public PulsarAdmin load(String key) throws Exception {
+                // key - broker name already is valid URL, has prefix "http://"
+                return new PulsarAdmin(new URL(key), pulsar.getConfiguration().getBrokerClientAuthenticationPlugin(),
+                        pulsar.getConfiguration().getBrokerClientAuthenticationParameters());
+            }
+        });
+
 
         // Initialize the default
         defaultStats = new NamespaceBundleStats();
@@ -309,6 +329,20 @@ public class NewLoadManagerImpl implements NewLoadManager, ZooKeeperCacheListene
         }
     }
 
+    private String getNamespaceNameFromBundleName(String bundleName) {
+        // the bundle format is property/cluster/namespace/0x00000000_0xFFFFFFFF
+        int pos = bundleName.lastIndexOf("/");
+        checkArgument(pos != -1);
+        return bundleName.substring(0, pos);
+    }
+
+    private String getBundleRangeFromBundleName(String bundleName) {
+        // the bundle format is property/cluster/namespace/0x00000000_0xFFFFFFFF
+        int pos = bundleName.lastIndexOf("/");
+        checkArgument(pos != -1);
+        return bundleName.substring(pos + 1, bundleName.length());
+    }
+
     /**
      * As the leader broker, select bundles for the namespace service to unload so that they may be reassigned to new
      * brokers.
@@ -316,9 +350,18 @@ public class NewLoadManagerImpl implements NewLoadManager, ZooKeeperCacheListene
     @Override
     public void doLoadShedding() {
         for (LoadSheddingStrategy strategy: loadSheddingPipeline) {
-            final Set<String> namespacesToUnload = strategy.selectBundlesForUnloading(loadData, conf);
-            if (namespacesToUnload != null && !namespacesToUnload.isEmpty()) {
-                // TODO: Write code to unload the bundles.
+            final Map<String, String> bundlesToUnload = strategy.selectBundlesForUnloading(loadData, conf);
+            if (bundlesToUnload != null && !bundlesToUnload.isEmpty()) {
+                try {
+                    for (Map.Entry<String, String> entry : bundlesToUnload.entrySet()) {
+                        final String bundle = entry.getKey();
+                        final String broker = entry.getValue();
+                        adminCache.get(broker).namespaces().unloadNamespaceBundle(
+                                getNamespaceNameFromBundleName(bundle), getBundleRangeFromBundleName(bundle));
+                    }
+                } catch (Exception e) {
+                    log.warn("Error when trying to perform load shedding: {}", e);
+                }
                 return;
             }
         }

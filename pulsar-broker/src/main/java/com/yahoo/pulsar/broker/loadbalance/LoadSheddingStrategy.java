@@ -2,6 +2,7 @@ package com.yahoo.pulsar.broker.loadbalance;
 
 import com.yahoo.pulsar.broker.ServiceConfiguration;
 
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -13,9 +14,9 @@ public interface LoadSheddingStrategy {
      * Recommend that all of the returned bundles be unloaded.
      * @param loadData The load data to used to make the unloading decision.
      * @param conf The service configuration.
-     * @return A set of all the bundles that should be unloaded.
+     * @return A map from all selected bundles to the brokers on which they reside.
      */
-    Set<String> selectBundlesForUnloading(LoadData loadData, ServiceConfiguration conf);
+    Map<String, String> selectBundlesForUnloading(LoadData loadData, ServiceConfiguration conf);
 
     /**
      * Create a LoadSheddingStrategy from the given configuration.

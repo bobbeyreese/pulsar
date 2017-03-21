@@ -39,18 +39,19 @@ public abstract class DeviationShedder implements LoadSheddingStrategy {
      * according to some metric.
      * @param loadData The load data to used to make the unloading decision.
      * @param conf The service configuration.
-     * @return A set of all the bundles that should be unloaded.
+     * @return A map from all selected bundles to the brokers on which they reside.
      */
     @Override
-    public Set<String> selectBundlesForUnloading(final LoadData loadData, final ServiceConfiguration conf) {
-        final Set<String> result = new HashSet<>();
+    public Map<String, String> selectBundlesForUnloading(final LoadData loadData, final ServiceConfiguration conf) {
+        final Map<String, String> result = new HashMap<>();
         bundleTreeSetCache.clear();
         metricTreeSetCache.clear();
         double sum = 0;
         double squareSum = 0;
         final Map<String, BrokerData> brokerDataMap = loadData.getBrokerData();
 
-        // Treating each broker as a data point, calculate the
+        // Treating each broker as a data point, calculate the sum and squared sum of the evaluated broker metrics.
+        // These may be used to calculate the standard deviation.
         for (Map.Entry<String, BrokerData> entry: brokerDataMap.entrySet()) {
             final double value = brokerValue(entry.getValue(), conf);
             sum += value;
@@ -76,7 +77,7 @@ public abstract class DeviationShedder implements LoadSheddingStrategy {
                 // Reset the bundle tree set now that a different broker is being considered.
                 bundleTreeSetCache.clear();
                 for (String bundle: brokerDataMap.get(mostLoaded).getLocalData().getBundles()) {
-                    if (!result.contains(bundle)) {
+                    if (!result.containsKey(bundle)) {
                         // Don't consider bundles that are already going to be moved.
                         bundleTreeSetCache.add(new ImmutablePair<>(bundleValue(bundle, brokerDataMap.get(mostLoaded),
                                 conf), bundle));
@@ -95,7 +96,7 @@ public abstract class DeviationShedder implements LoadSheddingStrategy {
                     // Update the standard deviation and replace the old load values in the broker tree set with the
                     // load values assuming this move took place.
                     final String bundleToMove = mostExpensivePair.getValue();
-                    result.add(bundleToMove);
+                    result.put(bundleToMove, mostLoaded);
                     metricTreeSetCache.remove(mostLoadedPair);
                     metricTreeSetCache.remove(leastLoadedPair);
                     final double newHighLoad = highestValue - loadIncurred;
