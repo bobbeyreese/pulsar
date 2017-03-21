@@ -74,7 +74,10 @@ public class LoadSimulationController {
                 "stop tenant namespace topic\n" +
                 "trade_group tenant group_name num_namespaces\n" +
                 "change_group tenant group_name\n" +
-                "stop_group tenant group_name\n", required = true)
+                "stop_group tenant group_name\n" +
+                "script script_name\n" +
+                "copy tenant_name source_zk target_zk\n" +
+                "stream source_zk\n", required = true)
         List<String> commandArguments;
 
         @Parameter(names = {"--rand-rate"}, description = "Choose message rate uniformly randomly from the next two " +
@@ -105,10 +108,12 @@ public class LoadSimulationController {
         private final ZooKeeper zkClient;
         private final Set<String> brokers;
         private final String path;
+        private final ShellArguments arguments;
 
-        public BrokerWatcher(final String path, final ZooKeeper zkClient) {
+        public BrokerWatcher(final String path, final ZooKeeper zkClient, final ShellArguments arguments) {
             this.path = path;
             this.zkClient = zkClient;
+            this.arguments = arguments;
             brokers = new HashSet<>();
             process(null);
         }
@@ -118,7 +123,7 @@ public class LoadSimulationController {
                 final List<String> currentBrokers = zkClient.getChildren(path, this);
                 for (final String broker: currentBrokers) {
                     if (!brokers.contains(broker)) {
-                        new LoadReportWatcher(String.format("%s/%s", path, broker), zkClient);
+                        new LoadReportWatcher(String.format("%s/%s", path, broker), zkClient, arguments);
                         brokers.add(broker);
                     }
                 }
@@ -133,10 +138,12 @@ public class LoadSimulationController {
     private class LoadReportWatcher implements Watcher {
         private final ZooKeeper zkClient;
         private final String path;
+        private final ShellArguments arguments;
 
-        public LoadReportWatcher(final String path, final ZooKeeper zkClient) {
+        public LoadReportWatcher(final String path, final ZooKeeper zkClient, final ShellArguments arguments) {
             this.path = path;
             this.zkClient = zkClient;
+            this.arguments = arguments;
             // Get initial topics and set this up as a watch by calling process.
             process(null);
         }
@@ -151,16 +158,20 @@ public class LoadSimulationController {
                     final String namespace = bundle.substring(0, bundle.lastIndexOf('/'));
                     final String destination = String.format("%s/%s", namespace, "t");
                     final NamespaceBundleStats stats = entry.getValue();
-                    final double messageRate = stats.msgRateIn + stats.msgRateOut;
+
+                    // Approximate total message rate via average between in/out.
+                    final double messageRate = arguments.rateMultiplier * (stats.msgRateIn + stats.msgRateOut) / 2;
+
                     // size = throughput / rate.
-                    final int messageSize = (int)
-                            Math.ceil((stats.msgThroughputIn + stats.msgThroughputOut) / messageRate);
-                    final ShellArguments arguments = new ShellArguments();
+                    final int messageSize = (int) Math.ceil(arguments.rateMultiplier *
+                            (stats.msgThroughputIn + stats.msgThroughputOut) / (2 * messageRate));
+
+                    final ShellArguments tradeArguments = new ShellArguments();
                     arguments.rate = messageRate;
                     arguments.size = messageSize;
                     // Try to modify the topic if it already exists. Otherwise, create it.
-                    if (!change(arguments, destination)) {
-                        trade(arguments, destination);
+                    if (!change(tradeArguments, destination)) {
+                        trade(tradeArguments, destination);
                     }
                 }
             } catch (Exception ex) {
@@ -434,7 +445,9 @@ public class LoadSimulationController {
         if (checkAppArgs(commandArguments.size() - 1, 1)) {
             final String zkConnectString = commandArguments.get(1);
             final ZooKeeper zkClient = new ZooKeeper(zkConnectString, 5000, null);
-            new BrokerWatcher("/loadbalance/brokers", zkClient);
+            new BrokerWatcher("/loadbalance/brokers", zkClient, arguments);
+            // This controller will now stream rate changes from the given ZK.
+            // Users wishing to stop this should Ctrl + C and use another Controller to send new commands.
             while (true);
         }
     }
