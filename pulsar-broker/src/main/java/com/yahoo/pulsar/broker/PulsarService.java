@@ -76,7 +76,7 @@ import io.netty.util.concurrent.DefaultThreadFactory;
  */
 public class PulsarService implements AutoCloseable {
     private static final Logger LOG = LoggerFactory.getLogger(PulsarService.class);
-    private static final String DYNAMIC_LOAD_MANAGER_ZPATH = "/loadbalance/load-manager";
+    private static final String DYNAMIC_LOAD_MANAGER_ZPATH = "/loadbalance/settings/load-manager";
     private ServiceConfiguration config = null;
     private NamespaceService nsservice = null;
     private ManagedLedgerClientFactory managedLedgerClientFactory = null;
