@@ -259,6 +259,8 @@ public class ServiceConfiguration implements PulsarConfiguration {
     // Name of load manager to use
     @FieldContext(dynamic = true)
     private String loadManagerClassName = "com.yahoo.pulsar.broker.loadbalance.impl.SimpleLoadManagerImpl";
+    @FieldContext(dynamic = true)
+    private String activeVersion = "";
     // Name of the Maven resource which contains the version string and build timestamp
     private final String RESOURCE_NAME = "version.txt";
     // Version string for this broker (inferred from Maven artifact, overridden in the broker configuration file)
@@ -969,6 +971,14 @@ public class ServiceConfiguration implements PulsarConfiguration {
 
     public void setLoadManagerClassName(String loadManagerClassName) {
         this.loadManagerClassName = loadManagerClassName;
+    }
+
+    public String getActiveVersion() {
+        return activeVersion;
+    }
+
+    public void setActiveVersion(String activeVersion) {
+        this.activeVersion = activeVersion;
     }
 
     private String getStringFromResource(String resource, String attribute, String defaultValue) {
