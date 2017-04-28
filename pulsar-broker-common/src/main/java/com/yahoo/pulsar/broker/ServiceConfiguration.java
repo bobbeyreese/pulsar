@@ -267,6 +267,8 @@ public class ServiceConfiguration implements PulsarConfiguration {
     private String brokerVersionString;
     // Build timestamp
     private String brokerBuildTimeString;
+    // Start time (seconds since 1/1/1970 UTC) of this broker
+    private long brokerStartTime = System.currentTimeMillis()/1000;
 
     public String getZookeeperServers() {
         return zookeeperServers;
@@ -1023,5 +1025,9 @@ public class ServiceConfiguration implements PulsarConfiguration {
 
     public void setBrokerBuildTimeString(String brokerBuildTimeString) {
         this.brokerBuildTimeString = brokerBuildTimeString;
+    }
+
+    public long getBrokerStartTime() {
+        return brokerStartTime;
     }
 }

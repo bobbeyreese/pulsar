@@ -239,6 +239,7 @@ public class ModularLoadManagerImpl implements ModularLoadManager, ZooKeeperCach
         localData = new LocalBrokerData(pulsar.getWebServiceAddress(), pulsar.getWebServiceAddressTls(),
                 pulsar.getBrokerServiceUrl(), pulsar.getBrokerServiceUrlTls());
         localData.setBrokerVersionString(pulsar.getConfiguration().getBrokerVersionString());
+        localData.setBrokerStartTime(pulsar.getConfiguration().getBrokerStartTime());
         placementStrategy = ModularLoadManagerStrategy.create(conf);
         policies = new SimpleResourceAllocationPolicies(pulsar);
         this.pulsar = pulsar;

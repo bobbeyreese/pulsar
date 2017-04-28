@@ -34,6 +34,7 @@ import com.yahoo.pulsar.common.policies.data.loadbalancer.SystemResourceUsage.Re
 public class LoadReport implements ServiceLookupData {
     private String name;
     private String brokerVersionString;
+    private long brokerStartTime;
 
     private final String webServiceUrl;
     private final String webServiceUrlTls;
@@ -363,6 +364,14 @@ public class LoadReport implements ServiceLookupData {
 
     public String getBrokerVersionString() {
         return brokerVersionString;
+    }
+
+    public void setBrokerStartTime(long brokerStartTime) {
+        this.brokerStartTime = brokerStartTime;
+    }
+
+    public long getBrokerStartTime() {
+        return brokerStartTime;
     }
 
 
