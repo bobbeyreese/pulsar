@@ -33,6 +33,7 @@ import com.yahoo.pulsar.common.policies.data.loadbalancer.SystemResourceUsage.Re
  */
 public class LoadReport implements ServiceLookupData {
     private String name;
+    private String brokerVersionString;
 
     private final String webServiceUrl;
     private final String webServiceUrlTls;
@@ -355,6 +356,15 @@ public class LoadReport implements ServiceLookupData {
     public void setPreAllocatedMsgRateOut(double preAllocatedMsgRateOut) {
         this.preAllocatedMsgRateOut = preAllocatedMsgRateOut;
     }
+
+    public void setBrokerVersionString(String brokerVersionString) {
+        this.brokerVersionString = brokerVersionString;
+    }
+
+    public String getBrokerVersionString() {
+        return brokerVersionString;
+    }
+
 
     @Override
     public String getWebServiceUrl() {
