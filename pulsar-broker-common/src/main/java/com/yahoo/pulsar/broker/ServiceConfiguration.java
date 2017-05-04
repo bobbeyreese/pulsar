@@ -19,7 +19,10 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Properties;
+import java.util.Set;
 
 import com.google.common.collect.Sets;
 import com.yahoo.pulsar.client.impl.auth.AuthenticationDisabled;
@@ -986,15 +989,17 @@ public class ServiceConfiguration implements PulsarConfiguration {
     private String getStringFromResource(String resource, String attribute, String defaultValue) {
         try {
             InputStream inputStream = getClass().getClassLoader().getResourceAsStream(resource);
-            BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream));
-            String line = null;
-            int indexOfEqualsSign = -1;
-            while ((line = reader.readLine()) != null) {
-                if (line.startsWith(attribute) && (indexOfEqualsSign = line.indexOf("=")) >= 0) {
-                    return (line.substring(indexOfEqualsSign + 1));
+            if ( inputStream != null ) {
+                BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream));
+                String line = null;
+                int indexOfEqualsSign = -1;
+                while ((line = reader.readLine()) != null) {
+                    if (line.startsWith(attribute) && (indexOfEqualsSign = line.indexOf("=")) >= 0) {
+                        return (line.substring(indexOfEqualsSign+1).trim());
+                    }
                 }
             }
-            // found the resource, but no matching line for the attribute
+            // no resource found, or it was found but there is no matching attribute
         } catch (IOException ignore) {
             // no resource was found in the jar
         }
